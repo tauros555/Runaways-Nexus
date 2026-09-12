@@ -1,5 +1,5 @@
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import streamlit as st
 import pandas as pd
@@ -56,29 +56,98 @@ def get_rd_data():
 
 
 def _race_selector(df, key_prefix="race"):
-    dates = sorted([int(x) for x in df["年月日"].dropna().unique()], reverse=True)
+    # 日付・場所・Rを「1つのラジオボタン」に統合する。
+    # 表示には芝/ダート・距離・レース名も含める。
+    race_rows = df[["年月日", "場所", "R", "レース名", "芝・ダ", "距離"]].copy()
+    race_rows["年月日"] = pd.to_numeric(race_rows["年月日"], errors="coerce")
+    race_rows["R"] = pd.to_numeric(race_rows["R"], errors="coerce")
+    race_rows["距離"] = pd.to_numeric(race_rows["距離"], errors="coerce")
+    race_rows["場所"] = race_rows["場所"].astype(str).str.strip()
+    race_rows["芝・ダ"] = race_rows["芝・ダ"].astype(str).str.strip()
+    race_rows["レース名"] = race_rows["レース名"].astype(str).str.strip()
+    race_rows = race_rows[
+        race_rows["年月日"].between(20000101, 20991231, inclusive="both")
+        & race_rows["R"].between(1, 12, inclusive="both")
+        & ~race_rows["場所"].isin(["", "0", "nan", "None", "NaN", "未指定"])
+    ].copy()
+
+    # 1レース1行に集約。TARGET由来の有効な芝/ダ・距離・レース名を優先する。
+    def _first_valid(series, invalid=("", "0", "nan", "None", "NaN")):
+        for v in series:
+            sv = str(v).strip()
+            if sv not in invalid:
+                return v
+        return series.iloc[0] if len(series) else ""
+
+    race_rows = (
+        race_rows.groupby(["年月日", "場所", "R"], as_index=False)
+        .agg({
+            "レース名": _first_valid,
+            "芝・ダ": lambda x: _first_valid(x, invalid=("", "0", "nan", "None", "NaN", "未指定")),
+            "距離": lambda x: pd.to_numeric(x, errors="coerce").dropna().iloc[0] if pd.to_numeric(x, errors="coerce").notna().any() else None,
+        })
+    )
+    race_rows["年月日"] = race_rows["年月日"].astype(int)
+    race_rows["R"] = race_rows["R"].astype(int)
+    race_rows = race_rows.sort_values(["年月日", "場所", "R"], ascending=[False, True, True]).reset_index(drop=True)
+
     desired_date = st.session_state.pop("radar_target_date", None)
-    date_index = dates.index(int(desired_date)) if desired_date is not None and int(desired_date) in dates else 0
+    desired_venue = st.session_state.pop("radar_target_venue", None)
+    desired_race = st.session_state.pop("radar_target_race", None)
+
+    options = []
+    labels = {}
+    for _, rr in race_rows.iterrows():
+        key = (int(rr["年月日"]), str(rr["場所"]), int(rr["R"]))
+        options.append(key)
+        ds = str(int(rr["年月日"]))
+        dlabel = f"{ds[:4]}/{ds[4:6]}/{ds[6:8]}" if len(ds) == 8 else ds
+        surface = str(rr.get("芝・ダ", "") or "").strip()
+        if surface not in ["芝", "ダ"]:
+            surface = ""
+        distance = pd.to_numeric(rr.get("距離"), errors="coerce")
+        dist_label = f"{surface}{int(distance)}m" if pd.notna(distance) else surface
+        race_name = str(rr.get("レース名", "") or "").strip()
+        if race_name in ["nan", "None", "0"]:
+            race_name = ""
+        parts = [f"{dlabel} {rr['場所']} {int(rr['R'])}R"]
+        if dist_label:
+            parts.append(dist_label)
+        if race_name:
+            parts.append(race_name)
+        labels[key] = " ｜ ".join(parts)
+
+    if not options:
+        st.error("選択可能なレースがありません。")
+        return None, None, None, df.iloc[0:0].copy()
+
+    target = None
+    if desired_date is not None and desired_venue is not None and desired_race is not None:
+        candidate = (int(desired_date), str(desired_venue), int(desired_race))
+        if candidate in options:
+            target = candidate
+
+    state_key = f"{key_prefix}_combined_radio"
+    if target is not None:
+        st.session_state[state_key] = target
+    elif st.session_state.get(state_key) not in options:
+        st.session_state[state_key] = options[0]
 
     with st.container(border=True):
         st.markdown("##### RACE SELECTOR")
-        c_date, c_venue, c_race = st.columns([1.2, 1, 0.8])
-        d = c_date.selectbox("開催日", dates, index=date_index, key=f"{key_prefix}_date")
+        selected = st.radio(
+            "レース選択",
+            options,
+            key=state_key,
+            format_func=lambda x: labels.get(x, str(x)),
+            horizontal=False,
+        )
 
-        day_df = df[df["年月日"] == d]
-        venues = sorted(day_df["場所"].dropna().astype(str).unique().tolist())
-        desired_venue = st.session_state.pop("radar_target_venue", None)
-        venue_index = venues.index(str(desired_venue)) if desired_venue is not None and str(desired_venue) in venues else 0
-        venue = c_venue.selectbox("開催場", venues, index=venue_index, key=f"{key_prefix}_venue")
-
-        vdf = day_df[day_df["場所"] == venue]
-        race_nos = sorted([int(x) for x in vdf["R"].dropna().unique()])
-        desired_race = st.session_state.pop("radar_target_race", None)
-        race_index = race_nos.index(int(desired_race)) if desired_race is not None and int(desired_race) in race_nos else 0
-        race_no = c_race.selectbox("レース", race_nos, index=race_index, key=f"{key_prefix}_r", format_func=lambda x: f"{int(x)}R")
-
-    current = vdf[vdf["R"] == race_no].copy().sort_values("馬番")
-    return d, venue, race_no, current
+    d, venue, race_no = selected
+    current = df[(pd.to_numeric(df["年月日"], errors="coerce") == int(d))
+                 & (df["場所"].astype(str).str.strip() == str(venue))
+                 & (pd.to_numeric(df["R"], errors="coerce") == int(race_no))].copy().sort_values("馬番")
+    return int(d), str(venue), int(race_no), current
 
 
 def _jump_to_race(date_value, venue_value, race_value):
@@ -242,23 +311,38 @@ elif page == "🏁 Race Analysis":
                 )
 
         st.markdown("#### ④ 当日Surface / Day Bias")
-        today_jst = int(datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y%m%d"))
-        is_today = int(d) == today_jst
+        now_jst = datetime.now(ZoneInfo("Asia/Tokyo"))
+        today_jst = int(now_jst.strftime("%Y%m%d"))
+        yesterday_jst = int((now_jst - timedelta(days=1)).strftime("%Y%m%d"))
+        # Streamlit CloudのUTC日付ではなくJSTで判定。
+        # さらに0:00〜7:59は、最新取込日が前日なら前開催日のJRA情報確認を許容する。
+        valid_dates = pd.to_numeric(df["年月日"], errors="coerce")
+        valid_dates = valid_dates[(valid_dates >= 20000101) & (valid_dates <= 20991231)]
+        latest_loaded_date = int(valid_dates.max()) if not valid_dates.empty else int(d)
+        rollover_previous_day = (
+            now_jst.hour < 8
+            and int(d) == yesterday_jst
+            and int(d) == latest_loaded_date
+        )
+        is_live_day = int(d) == today_jst or rollover_previous_day
         jra_conditions, jra_errors = ({}, [])
         official = {}
-        if is_today:
+        if is_live_day:
             jra_refresh_col, jra_info_col = st.columns([1, 4], vertical_alignment="center")
             with jra_refresh_col:
                 if st.button("🔄 JRA再取得", use_container_width=True, key=f"jra_refresh_{race_key}"):
                     fetch_jra_track_conditions.clear()
                     st.rerun()
             with jra_info_col:
-                st.caption("JRA公式馬場情報を自動取得。分析値は下で手動修正できます。")
+                if rollover_previous_day:
+                    st.caption("JRA公式馬場情報を自動取得（早朝の前開催日ロールオーバー）。分析値は下で手動修正できます。")
+                else:
+                    st.caption("JRA公式馬場情報を自動取得。分析値は下で手動修正できます。")
             with st.spinner("JRA馬場情報を取得中..."):
                 jra_conditions, jra_errors = fetch_jra_track_conditions()
             official = jra_conditions.get(venue, {})
         else:
-            st.caption("過去日レースのため、今日のJRA馬場情報は自動適用しません。手動設定のみ使用します。")
+            st.caption("過去日レースのため、JRA現在値は自動適用しません。手動設定のみ使用します。")
 
         if official:
             official_parts = []
@@ -272,7 +356,7 @@ elif page == "🏁 Race Analysis":
             time_note = official.get("cushion_time") or official.get("status_time")
             if time_note:
                 st.caption(f"公表・測定：{time_note}")
-        elif is_today:
+        elif is_live_day:
             st.warning("JRA公式値を取得できませんでした。手動設定で分析できます。")
 
         going = "未指定"
@@ -319,7 +403,7 @@ elif page == "🏁 Race Analysis":
                 st.session_state[going_key] = official_going
                 st.rerun()
 
-        if is_today and not jra_conditions and jra_errors:
+        if is_live_day and not jra_conditions and jra_errors:
             with st.expander("JRA自動取得エラー", expanded=False):
                 for err in jra_errors[-8:]:
                     st.code(err)
