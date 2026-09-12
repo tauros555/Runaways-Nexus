@@ -1,4 +1,6 @@
 from pathlib import Path
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import streamlit as st
 import pandas as pd
 
@@ -10,6 +12,8 @@ from modules.nexus_probability import calculate_base_scores, apply_surface_adjus
 from modules.day_bias import estimate_same_day_bias, add_bias_fit
 from modules.odds import fetch_win_odds
 from modules.value import add_value_metrics
+from modules.jra_track import fetch_jra_track_conditions, cushion_to_nexus_band
+from rd_modules.route_bias import render_route_grid
 
 BASE = Path(__file__).resolve().parent
 DATA = BASE / "data" / "training_current.csv"
@@ -55,19 +59,24 @@ def _race_selector(df, key_prefix="race"):
     dates = sorted([int(x) for x in df["年月日"].dropna().unique()], reverse=True)
     desired_date = st.session_state.pop("radar_target_date", None)
     date_index = dates.index(int(desired_date)) if desired_date is not None and int(desired_date) in dates else 0
-    d = st.selectbox("開催日", dates, index=date_index, key=f"{key_prefix}_date")
 
-    day_df = df[df["年月日"] == d]
-    venues = sorted(day_df["場所"].dropna().astype(str).unique().tolist())
-    desired_venue = st.session_state.pop("radar_target_venue", None)
-    venue_index = venues.index(str(desired_venue)) if desired_venue is not None and str(desired_venue) in venues else 0
-    venue = st.selectbox("開催場", venues, index=venue_index, key=f"{key_prefix}_venue")
+    with st.container(border=True):
+        st.markdown("##### RACE SELECTOR")
+        c_date, c_venue, c_race = st.columns([1.2, 1, 0.8])
+        d = c_date.selectbox("開催日", dates, index=date_index, key=f"{key_prefix}_date")
 
-    vdf = day_df[day_df["場所"] == venue]
-    race_nos = sorted([int(x) for x in vdf["R"].dropna().unique()])
-    desired_race = st.session_state.pop("radar_target_race", None)
-    race_index = race_nos.index(int(desired_race)) if desired_race is not None and int(desired_race) in race_nos else 0
-    race_no = st.selectbox("レース", race_nos, index=race_index, key=f"{key_prefix}_r")
+        day_df = df[df["年月日"] == d]
+        venues = sorted(day_df["場所"].dropna().astype(str).unique().tolist())
+        desired_venue = st.session_state.pop("radar_target_venue", None)
+        venue_index = venues.index(str(desired_venue)) if desired_venue is not None and str(desired_venue) in venues else 0
+        venue = c_venue.selectbox("開催場", venues, index=venue_index, key=f"{key_prefix}_venue")
+
+        vdf = day_df[day_df["場所"] == venue]
+        race_nos = sorted([int(x) for x in vdf["R"].dropna().unique()])
+        desired_race = st.session_state.pop("radar_target_race", None)
+        race_index = race_nos.index(int(desired_race)) if desired_race is not None and int(desired_race) in race_nos else 0
+        race_no = c_race.selectbox("レース", race_nos, index=race_index, key=f"{key_prefix}_r", format_func=lambda x: f"{int(x)}R")
+
     current = vdf[vdf["R"] == race_no].copy().sort_values("馬番")
     return d, venue, race_no, current
 
@@ -233,9 +242,87 @@ elif page == "🏁 Race Analysis":
                 )
 
         st.markdown("#### ④ 当日Surface / Day Bias")
-        c1, c2 = st.columns(2)
-        going = c1.selectbox("馬場状態", ["未指定","良","稍重","重","不良"], key=f"surface_going_{race_key}")
-        cushion_band = c2.selectbox("芝クッション帯", ["未指定","低","中","高"], key=f"surface_cushion_{race_key}") if surface == "芝" else None
+        today_jst = int(datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y%m%d"))
+        is_today = int(d) == today_jst
+        jra_conditions, jra_errors = ({}, [])
+        official = {}
+        if is_today:
+            jra_refresh_col, jra_info_col = st.columns([1, 4], vertical_alignment="center")
+            with jra_refresh_col:
+                if st.button("🔄 JRA再取得", use_container_width=True, key=f"jra_refresh_{race_key}"):
+                    fetch_jra_track_conditions.clear()
+                    st.rerun()
+            with jra_info_col:
+                st.caption("JRA公式馬場情報を自動取得。分析値は下で手動修正できます。")
+            with st.spinner("JRA馬場情報を取得中..."):
+                jra_conditions, jra_errors = fetch_jra_track_conditions()
+            official = jra_conditions.get(venue, {})
+        else:
+            st.caption("過去日レースのため、今日のJRA馬場情報は自動適用しません。手動設定のみ使用します。")
+
+        if official:
+            official_parts = []
+            if official.get("turf_going"):
+                official_parts.append(f'芝 {official["turf_going"]}')
+            if official.get("cushion") is not None:
+                official_parts.append(f'Cushion {float(official["cushion"]):.1f}')
+            if official.get("dirt_going"):
+                official_parts.append(f'ダ {official["dirt_going"]}')
+            st.success("JRA公式 ｜ " + " / ".join(official_parts))
+            time_note = official.get("cushion_time") or official.get("status_time")
+            if time_note:
+                st.caption(f"公表・測定：{time_note}")
+        elif is_today:
+            st.warning("JRA公式値を取得できませんでした。手動設定で分析できます。")
+
+        going = "未指定"
+        cushion_band = None
+        if surface == "芝":
+            official_cushion = official.get("cushion") if official else None
+            cushion_key = f"surface_cushion_value_{race_key}"
+            init_key = f"surface_cushion_init_{race_key}"
+            if not st.session_state.get(init_key, False):
+                st.session_state[cushion_key] = f"{float(official_cushion):.1f}" if official_cushion is not None else ""
+                st.session_state[init_key] = True
+            c1, c2 = st.columns(2)
+            cushion_text = c1.text_input("芝 クッション値（分析使用）", key=cushion_key, placeholder="例 9.3")
+            try:
+                cushion_value = float(cushion_text) if str(cushion_text).strip() else None
+            except ValueError:
+                cushion_value = None
+                c1.warning("クッション値は数値で入力してください。")
+            auto_band = cushion_to_nexus_band(cushion_value)
+            manual_band = c2.checkbox("クッション帯を手動修正", value=False, key=f"surface_band_manual_{race_key}")
+            if manual_band:
+                cushion_band = c2.selectbox("芝クッション帯", ["未指定","低","中","高"], index=0 if auto_band is None else ["未指定","低","中","高"].index(auto_band), key=f"surface_cushion_{race_key}")
+                cushion_band = None if cushion_band == "未指定" else cushion_band
+            else:
+                cushion_band = auto_band
+                c2.metric("芝クッション帯（自動）", cushion_band or "未指定")
+            if official_cushion is not None and cushion_value is not None and abs(float(cushion_value) - float(official_cushion)) > 0.001:
+                st.caption(f"手動補正中：JRA公式 {float(official_cushion):.1f} → 分析 {float(cushion_value):.1f}")
+            if official_cushion is not None and st.button("芝クッションを公式値に戻す", key=f"reset_cushion_{race_key}"):
+                st.session_state[cushion_key] = f"{float(official_cushion):.1f}"
+                st.rerun()
+        else:
+            opts = ["未指定","良","稍重","重","不良"]
+            official_going = official.get("dirt_going") if official else None
+            going_key = f"surface_going_{race_key}"
+            going_init_key = f"surface_going_init_{race_key}"
+            if not st.session_state.get(going_init_key, False):
+                st.session_state[going_key] = official_going if official_going in opts else "未指定"
+                st.session_state[going_init_key] = True
+            going = st.selectbox("ダート 馬場状態（分析使用）", opts, key=going_key)
+            if official_going and going != official_going:
+                st.caption(f"手動補正中：JRA公式 {official_going} → 分析 {going}")
+            if official_going and st.button("ダートを公式値に戻す", key=f"reset_going_{race_key}"):
+                st.session_state[going_key] = official_going
+                st.rerun()
+
+        if is_today and not jra_conditions and jra_errors:
+            with st.expander("JRA自動取得エラー", expanded=False):
+                for err in jra_errors[-8:]:
+                    st.code(err)
 
         bias_mode = st.segmented_control("当日Bias", ["AUTO (Past-Only)", "手動"], default="AUTO (Past-Only)", key=f"bias_mode_{race_key}")
         hist, _, _ = get_rd_data()
@@ -392,6 +479,16 @@ elif page == "🏁 Race Analysis":
                         st.caption(tag)
                         if pd.notna(hr.get("VALUE")):
                             st.caption(f"VALUE {hr['VALUE']:.2f} ｜ {hr.get('VALUE判定','-')}")
+
+                st.markdown("##### 展開予想図")
+                st.caption("RaceDevelopment正式モデルによる1角・最終角の想定隊列です。")
+                route_view = final.copy()
+                required_route_cols = {"PredFirstRank","Pred4ScenarioRank","初角ゾーン","最終角ゾーン","初角進路","最終角進路"}
+                if required_route_cols.issubset(route_view.columns):
+                    st.markdown(render_route_grid(route_view, "初角", "Nexus DayBias参照"), unsafe_allow_html=True)
+                    st.markdown(render_route_grid(route_view, "最終", "Nexus DayBias参照"), unsafe_allow_html=True)
+                else:
+                    st.info("隊列表示用列が不足しています。Nexus分析を再実行してください。")
             errors = st.session_state.get(f"odds_errors_{race_key}", [])
             if errors:
                 with st.expander("オッズ取得メモ", expanded=False):

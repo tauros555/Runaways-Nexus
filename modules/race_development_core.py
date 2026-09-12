@@ -81,6 +81,7 @@ def run_race_development(
     mc, meta = simulate_race(pred, scen, n_sims=n_sims, mode="AUTO", seed=5601)
     cols = [c for c in [
         "馬番", "馬名", "FullWinProb", "ScenarioFullWinProb", "展開評価", "今回想定脚質",
+        "PredFirstRank", "Pred4ScenarioRank", "初角ゾーン", "最終角ゾーン",
         "初角進路", "最終角進路", "進路バイアス評価",
         "LeadProb_Jockey", "FirstPred_Jockey", "FourPred_Jockey",
         "HorseFinishPast5", "距離変化区分", "距離変化_補正ソース",

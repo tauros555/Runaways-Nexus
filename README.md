@@ -37,3 +37,10 @@ Candidate weights from 2026 chronological backtest: development 0.10, pedigree 0
 - Partner Scoreは条件付き複勝確率ではなく相対順位。
 - SmartRCは完全除外。
 - 距離短縮・延長のコードは保持するが、再構築した暫定補正マスタはHoldoutで安定しなかったため正式版には同梱しない。正式マスタが無い場合は補正0へ安全にフォールバック。
+
+## UI / Track Update 1
+- JRA公式馬場情報を当日レースで自動取得（芝/ダート馬場状態・芝クッション値）。
+- 芝クッション値とダート馬場状態は手動修正可能。取得失敗時は未指定のまま手動入力へフォールバック。
+- 過去日レースには当日のJRA馬場情報を自動適用しない。
+- Race Analysisの開催日・開催場・レース番号を1つのRACE SELECTORへ集約。
+- FINAL NEXUS TOP 3直下にRaceDevelopment正式モデルの1角・最終角展開予想図を追加。
