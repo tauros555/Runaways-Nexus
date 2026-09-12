@@ -127,7 +127,7 @@ def _race_selector(df, key_prefix="race"):
         if candidate in options:
             target = candidate
 
-    state_key = f"{key_prefix}_combined_radio"
+    state_key = f"{key_prefix}_combined_select"
     if target is not None:
         st.session_state[state_key] = target
     elif st.session_state.get(state_key) not in options:
@@ -135,12 +135,11 @@ def _race_selector(df, key_prefix="race"):
 
     with st.container(border=True):
         st.markdown("##### RACE SELECTOR")
-        selected = st.radio(
+        selected = st.selectbox(
             "レース選択",
             options,
             key=state_key,
             format_func=lambda x: labels.get(x, str(x)),
-            horizontal=False,
         )
 
     d, venue, race_no = selected
