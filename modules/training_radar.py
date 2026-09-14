@@ -6,6 +6,19 @@ import pandas as pd
 
 POSITIVE = {"〇", "○", "◎", "★", "true", "1", "yes", "有", "あり"}
 
+HIGH_ROI_TRAINERS = {
+    "加藤士津八": "加藤士津八",
+    "加藤士津": "加藤士津八",
+    "加藤志津": "加藤士津八",
+    "斎藤誠": "斎藤誠",
+    "斉藤誠": "斎藤誠",
+    "吉岡辰弥": "吉岡辰弥",
+    "森秀行": "森秀行",
+}
+
+NAGORI_MIN_DAYS = 45
+NAGORI_MAX_DAYS = 60
+
 
 def _positive(value) -> bool:
     if value is None or (isinstance(value, float) and pd.isna(value)):
@@ -14,6 +27,71 @@ def _positive(value) -> bool:
         return value
     s = str(value).strip()
     return s in POSITIVE or s.lower() in POSITIVE
+
+
+def _normalize_high_roi_trainer(name: object) -> str:
+    s = str(name or "").strip()
+    for alias, canonical in HIGH_ROI_TRAINERS.items():
+        if s.startswith(alias):
+            return canonical
+    return ""
+
+
+def _add_nagori_a3(df: pd.DataFrame, history_path: str | Path | None) -> pd.DataFrame:
+    out = df.copy()
+    out["nagori_a3"] = False
+    out["nagori_days"] = pd.NA
+    out["prev_race_date"] = pd.NA
+    out["prev_race_a3"] = False
+    if not history_path:
+        return out
+    hp = Path(history_path)
+    if not hp.exists():
+        return out
+    try:
+        hist = pd.read_csv(hp, encoding="utf-8-sig")
+    except Exception:
+        return out
+    required = {"race_date", "horse_name", "a3"}
+    if not required.issubset(hist.columns):
+        return out
+    hist = hist.copy()
+    hist["race_date"] = pd.to_numeric(hist["race_date"], errors="coerce")
+    hist = hist[hist["race_date"].between(20000101, 20991231, inclusive="both")].copy()
+    hist["horse_name"] = hist["horse_name"].astype(str).str.strip()
+    hist["a3"] = hist["a3"].astype(str).str.lower().isin(["true", "1", "yes", "○", "〇", "◎", "有", "あり"])
+    # horse_id is preferred when it exists in both sources; horse_name remains the safe fallback.
+    if "horse_id" in hist.columns:
+        hist["horse_id"] = hist["horse_id"].astype(str).str.replace(r"\.0$", "", regex=True).str.strip()
+    by_name = {k: g.sort_values("race_date") for k, g in hist.groupby("horse_name", sort=False)}
+
+    dates = pd.to_numeric(out.get("年月日"), errors="coerce")
+    for idx, row in out.iterrows():
+        cur_date = pd.to_numeric(row.get("年月日"), errors="coerce")
+        if pd.isna(cur_date):
+            continue
+        name = str(row.get("馬名", "")).strip()
+        if not name or name not in by_name:
+            continue
+        g = by_name[name]
+        prev = g[g["race_date"] < int(cur_date)]
+        if prev.empty:
+            continue
+        # The concept is explicitly "previous start was A3", not "there was an A3 sometime in the window".
+        pr = prev.iloc[-1]
+        prev_date = int(pr["race_date"])
+        try:
+            cur_dt = pd.to_datetime(str(int(cur_date)), format="%Y%m%d")
+            prev_dt = pd.to_datetime(str(prev_date), format="%Y%m%d")
+            days = int((cur_dt - prev_dt).days)
+        except Exception:
+            continue
+        prev_a3 = bool(pr["a3"])
+        out.at[idx, "prev_race_date"] = prev_date
+        out.at[idx, "prev_race_a3"] = prev_a3
+        out.at[idx, "nagori_days"] = days
+        out.at[idx, "nagori_a3"] = bool(prev_a3 and NAGORI_MIN_DAYS <= days <= NAGORI_MAX_DAYS)
+    return out
 
 
 @dataclass(frozen=True)
@@ -73,7 +151,7 @@ def training_mark(row: pd.Series) -> TrainingMark:
     return TrainingMark(stars, label, course, b3, jirai)
 
 
-def load_training(path: str | Path) -> pd.DataFrame:
+def load_training(path: str | Path, history_path: str | Path | None = None) -> pd.DataFrame:
     df = pd.read_csv(path, encoding="utf-8-sig")
     for c in ["年月日", "R", "馬番"]:
         if c in df.columns:
@@ -101,6 +179,11 @@ def load_training(path: str | Path) -> pd.DataFrame:
     yoshioka = df.get("調教師", pd.Series("", index=df.index)).astype(str).str.strip().str.startswith("吉岡")
     df["吉岡地雷例外"] = yoshioka & trainer_positive & raw_jirai
     df["地雷適用"] = df["jirai_badge"]
+    # Stable high-ROI trainer badge: display only when the trainer rule itself is positive.
+    df["high_roi_trainer_name"] = df.get("調教師", pd.Series("", index=df.index)).map(_normalize_high_roi_trainer)
+    df["high_roi_trainer"] = trainer_positive & df["high_roi_trainer_name"].ne("")
+    # Nagori A3: previous start was A3 and the current start is 45-60 days later.
+    df = _add_nagori_a3(df, history_path)
     return df
 
 
@@ -116,6 +199,8 @@ def summarize_races(df: pd.DataFrame) -> pd.DataFrame:
             course_count=("course_badge", "sum"),
             b3_count=("b3_badge", "sum"),
             jirai_count=("jirai_badge", "sum"),
+            nagori_count=("nagori_a3", "sum"),
+            high_roi_trainer_count=("high_roi_trainer", "sum"),
         )
         .reset_index()
     )
@@ -128,6 +213,7 @@ def race_horses(df: pd.DataFrame, venue: str, race_no: int) -> pd.DataFrame:
     cols = [
         "馬番", "馬名", "父", "調教師", "ZI",
         "training_stars", "training_level", "A3LAP判定", "A3高勝率Lap", "調教師判定",
-        "course_badge", "b3_badge", "jirai_badge", "地雷適用", "吉岡地雷例外", "コース判定", "B3LAP判定", "地雷ラップ判定",
+        "course_badge", "b3_badge", "jirai_badge", "地雷適用", "吉岡地雷例外", "high_roi_trainer", "high_roi_trainer_name",
+        "nagori_a3", "nagori_days", "prev_race_date", "prev_race_a3", "コース判定", "B3LAP判定", "地雷ラップ判定",
     ]
     return x[[c for c in cols if c in x.columns]].sort_values("馬番")

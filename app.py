@@ -17,6 +17,7 @@ from rd_modules.route_bias import render_route_grid
 
 BASE = Path(__file__).resolve().parent
 DATA = BASE / "data" / "training_current.csv"
+A3_HISTORY = BASE / "data" / "a3_history.csv"
 
 st.set_page_config(page_title="Runaway's Nexus", page_icon="🏇", layout="wide")
 
@@ -44,7 +45,7 @@ st.markdown("<p class='nexus-title'>Runaway’s Nexus</p><p class='nexus-sub'>Tr
 
 @st.cache_data(show_spinner=False)
 def get_training():
-    return load_training(DATA)
+    return load_training(DATA, A3_HISTORY)
 
 @st.cache_data(show_spinner="血統マスタ読込中...")
 def get_pedigree_masters():
@@ -197,7 +198,7 @@ if page == "🏠 Training Radar":
     if venue != "全場":
         day = day[day["場所"] == venue]
 
-    focus = day[day["max_stars"] > 0]
+    focus = day[(day["max_stars"] > 0) | (day["nagori_count"] > 0)]
     if focus.empty:
         st.info("この開催日の主調教★レースはありません。")
     for idx, r in focus.iterrows():
@@ -210,9 +211,26 @@ if page == "🏠 Training Radar":
             badges.append(f"<span class='badge'>B3 {int(r.b3_count)}</span>")
         if r.jirai_count:
             badges.append(f"<span class='badge badge-warn'>☠ {int(r.jirai_count)}</span>")
+        if r.nagori_count:
+            badges.append(f"<span class='badge badge-pink'>🟣 なごりA3 {int(r.nagori_count)}頭</span>")
+        if r.high_roi_trainer_count:
+            badges.append(f"<span class='badge badge-green'>🏆 高回収厩舎 {int(r.high_roi_trainer_count)}頭</span>")
+        race_rows = df[(pd.to_numeric(df["年月日"], errors="coerce") == int(selected_date))
+                       & (df["場所"].astype(str) == str(r["場所"]))
+                       & (pd.to_numeric(df["R"], errors="coerce") == int(r["R"]))]
+        for _, sr in race_rows[race_rows.get("high_roi_trainer", False)].iterrows():
+            badges.append(
+                f"<span class='badge badge-green'>🏆 {sr.get('high_roi_trainer_name', sr.get('調教師',''))} "
+                f"{int(sr['馬番'])}番 {sr['馬名']}</span>"
+            )
+        for _, sr in race_rows[race_rows.get("nagori_a3", False)].iterrows():
+            days_txt = int(sr.get("nagori_days")) if pd.notna(sr.get("nagori_days")) else "-"
+            badges.append(
+                f"<span class='badge badge-pink'>🟣 なごりA3 {int(sr['馬番'])}番 {sr['馬名']} {days_txt}日</span>"
+            )
         c_main, c_open = st.columns([8, 1.4])
         with c_main:
-            attention = _race_attention_label(r.max_stars, r.elite_count, r.strong_training_count)
+            attention = "🟣 なごり注目" if int(r.max_stars or 0) == 0 and int(r.nagori_count or 0) > 0 else _race_attention_label(r.max_stars, r.elite_count, r.strong_training_count)
             st.markdown(
                 f"<div class='race-card'><b>{r['場所']} {int(r['R'])}R</b>　{r['レース名']}　"
                 f"<span class='star'>{r['stars']}</span>　<span class='badge badge-pink'>{attention}</span><br>" + "".join(badges) + "</div>",
@@ -228,7 +246,7 @@ if page == "🏠 Training Radar":
                 args=(selected_date, r["場所"], int(r["R"])),
             )
     st.divider()
-    st.caption("★=通常A3 / ★★=高勝率A3または調教師判定 / ★★★=強判定の重複。Course・B3は補助バッジで★には加算しません。")
+    st.caption("★=通常A3 / ★★=高勝率A3または調教師判定 / ★★★=強判定の重複。🟣なごりA3=前走A3から45〜60日。🏆高回収厩舎=対象厩舎かつ調教師判定○。いずれも★へ二重加点しません。")
 
 elif page == "🏁 Race Analysis":
     st.subheader("RACE ANALYSIS")
@@ -248,9 +266,11 @@ elif page == "🏁 Race Analysis":
     view["Course"] = view["course_badge"].map(lambda x: "C" if x else "-")
     view["B3"] = view["b3_badge"].map(lambda x: "B3" if x else "-")
     view["地雷"] = view["jirai_badge"].map(lambda x: "☠" if x else "-")
+    view["なごりA3"] = view.apply(lambda r: f"🟣 {int(r['nagori_days'])}日" if bool(r.get("nagori_a3", False)) and pd.notna(r.get("nagori_days")) else "-", axis=1)
+    view["高回収厩舎"] = view.apply(lambda r: f"🏆 {r.get('high_roi_trainer_name','')}" if bool(r.get("high_roi_trainer", False)) else "-", axis=1)
 
     st.markdown("#### ① Training")
-    show = [c for c in ["馬番","馬名","父","調教師","調教★","training_level","Course","B3","地雷","ZI"] if c in view.columns]
+    show = [c for c in ["馬番","馬名","父","調教師","調教★","training_level","なごりA3","高回収厩舎","Course","B3","地雷","ZI"] if c in view.columns]
     st.dataframe(view[show], use_container_width=True, hide_index=True)
 
     st.markdown("#### ② Pedigree Core")

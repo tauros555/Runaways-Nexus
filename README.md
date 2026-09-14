@@ -44,3 +44,13 @@ Candidate weights from 2026 chronological backtest: development 0.10, pedigree 0
 - 過去日レースには当日のJRA馬場情報を自動適用しない。
 - Race Analysisの開催日・開催場・レース番号を1つのRACE SELECTORへ集約。
 - FINAL NEXUS TOP 3直下にRaceDevelopment正式モデルの1角・最終角展開予想図を追加。
+
+## Training Radar additions: Nagori A3 / High-ROI trainer badge
+
+- `🟣 なごりA3`: the horse's immediately previous start was ordinary A3 and the current start is 45-60 days later.
+  - This is stored/displayed as an independent feature. It does not increase training stars by itself.
+  - `data/a3_history.csv` stores all starts needed to identify the immediately previous race.
+  - After replacing `data/training_current.csv`, run `python scripts/update_a3_history.py` before committing so the history persists through Streamlit redeploys.
+- `🏆 高回収厩舎`: displayed only when trainer rule is positive and the trainer is one of 加藤士津八 / 斎藤誠 / 吉岡辰弥 / 森秀行.
+  - This badge does not add another training star because trainer rule is already a primary training signal.
+  - 吉岡辰弥 + trainer rule positive keeps the existing Jirai override.
