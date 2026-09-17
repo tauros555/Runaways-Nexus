@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+
+data/inbox/
+data/work/
+data/backup/
+
+*.tmp
+~$*.xlsx
