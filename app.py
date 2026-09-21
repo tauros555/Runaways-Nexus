@@ -484,15 +484,88 @@ m2.metric("想定ペース",scenario_jp(scenario.get("PredictedScenario","-")))
 m3.metric("LeadPressure",raceinfo.get("先行圧力","-"))
 m4.metric("LeadCompetition",f"{float(raceinfo.get('LeadCompetitionIndex_v2',0)):.3f}")
 
-# Surface/day bias
+# ---------------------------------------------------------
+# Surface / Day Bias
+# ---------------------------------------------------------
+st.markdown("### 当日Bias")
+
 hist,_,_=get_rd(dataset_signature())
 auto_bias=estimate_same_day_bias(hist,d,venue,surface,race_no)
-fb_bias=auto_bias["front_back_bias"]; io_bias=auto_bias["inside_outside_bias"]
+
+bias_mode=st.segmented_control(
+    "Biasモード",
+    ["AUTO (Past-Only)","手動"],
+    default="AUTO (Past-Only)",
+    key=f"bias_mode_{race_key}",
+)
+
+fb_map={
+    "前有利":1.0,
+    "やや前有利":0.5,
+    "フラット":0.0,
+    "やや差し有利":-0.5,
+    "差し有利":-1.0,
+}
+io_map={
+    "内有利":1.0,
+    "やや内有利":0.5,
+    "フラット":0.0,
+    "やや外有利":-0.5,
+    "外有利":-1.0,
+}
+
+if bias_mode=="AUTO (Past-Only)":
+    fb_bias=float(auto_bias.get("front_back_bias",0.0) or 0.0)
+    io_bias=float(auto_bias.get("inside_outside_bias",0.0) or 0.0)
+
+    b1,b2,b3=st.columns(3)
+    b1.metric("前後Bias",str(auto_bias.get("label_fb","フラット")),f"{fb_bias:+.2f}")
+    b2.metric("内外Bias",str(auto_bias.get("label_io","フラット")),f"{io_bias:+.2f}")
+    b3.metric("参照済みレース",f"{int(auto_bias.get('sample_races',0) or 0)}R")
+
+    st.caption("AUTOは同日・同競馬場・同芝ダートの当該レース以前の結果だけで推定します。")
+else:
+    b1,b2=st.columns(2)
+
+    auto_fb_label=str(auto_bias.get("label_fb","フラット"))
+    auto_io_label=str(auto_bias.get("label_io","フラット"))
+    if auto_fb_label not in fb_map:
+        auto_fb_label="フラット"
+    if auto_io_label not in io_map:
+        auto_io_label="フラット"
+
+    fb_labels=list(fb_map.keys())
+    io_labels=list(io_map.keys())
+
+    fb_label=b1.selectbox(
+        "前後Bias手動",
+        fb_labels,
+        index=fb_labels.index(auto_fb_label),
+        key=f"fb_manual_{race_key}",
+    )
+    io_label=b2.selectbox(
+        "内外Bias手動",
+        io_labels,
+        index=io_labels.index(auto_io_label),
+        key=f"io_manual_{race_key}",
+    )
+
+    fb_bias=fb_map[fb_label]
+    io_bias=io_map[io_label]
+
+    st.caption(
+        f"AUTO参考値：前後 {auto_fb_label} / 内外 {auto_io_label} "
+        f"（参照 {int(auto_bias.get('sample_races',0) or 0)}R）"
+    )
+
 with_bias=add_bias_fit(nexus,fb_bias,io_bias)
 final=apply_surface_adjustment(
-    with_bias,surface=surface,going=going,
+    with_bias,
+    surface=surface,
+    going=going,
     cushion_band=cushion_to_nexus_band(cushion) if surface=="芝" and cushion is not None else None,
-    front_back_fit_col="front_back_fit",inside_outside_fit_col="inside_outside_fit",
+    front_back_fit_col="front_back_fit",
+    inside_outside_fit_col="inside_outside_fit",
 )
 final=final.merge(m_eval[["馬番","M評価","M表示","M付与状態","M補完待ち","M×コース","M_STRICT_110","M_STRICT_REASON"]],on="馬番",how="left",suffixes=("","_m"))
 
