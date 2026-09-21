@@ -1,0 +1,36 @@
+{
+  "inbox_dir": "data/inbox",
+  "training_template": "tools/training/training_judgement_ver2_1.xlsx",
+  "training_workbook_latest": "data/work/training_judgement_latest.xlsx",
+  "training_raw_export": "data/work/training_main_raw.csv",
+  "training_output": "data/training_current.csv",
+  "a3_history": "data/a3_history.csv",
+  "history_master": "data/rd/history_seed_2020_2026.csv.gz",
+  "backup_dir": "data/backup",
+  "de_patterns": [
+    "DE*.CSV",
+    "DE*.csv"
+  ],
+  "hill_patterns": [
+    "h.csv",
+    "H.csv",
+    "h*.csv",
+    "H*.csv"
+  ],
+  "wood_patterns": [
+    "w.csv",
+    "W.csv",
+    "w*.csv",
+    "W*.csv"
+  ],
+  "horse_patterns": [
+    "馬単位*.csv",
+    "horse*.csv"
+  ],
+  "race_patterns": [
+    "レースデータ*.csv",
+    "race*.csv"
+  ],
+  "git_remote": "origin",
+  "git_branch": "main"
+}

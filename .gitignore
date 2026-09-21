@@ -1,9 +1,24 @@
 __pycache__/
 *.pyc
+*.pyo
 
-data/inbox/
-data/work/
-data/backup/
+data/inbox/*
+!data/inbox/README.txt
+data/work/*
+!data/work/.gitkeep
+data/backup/*
+!data/backup/.gitkeep
 
+update_nexus.log
 *.tmp
 ~$*.xlsx
+.DS_Store
+Thumbs.db
+# Python cache
+__pycache__/
+*.py[cod]
+# Nexus local runtime / work files
+data/backup/
+data/work/
+data/inbox/
+*.log
