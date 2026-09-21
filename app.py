@@ -278,50 +278,126 @@ st.markdown(f"**{surface}{distance}m** ｜ {len(current)}頭")
 
 now=datetime.now(ZoneInfo("Asia/Tokyo"))
 today=int(now.strftime("%Y%m%d"))
-is_live=(int(d)==today)
+yesterday=int((now-timedelta(days=1)).strftime("%Y%m%d"))
+
+valid_dates=pd.to_numeric(df["年月日"],errors="coerce")
+valid_dates=valid_dates[(valid_dates>=20000101)&(valid_dates<=20991231)]
+latest_loaded_date=int(valid_dates.max()) if not valid_dates.empty else int(d)
+
+# 0:00〜7:59は、最新取込日が前日なら前開催日のJRA情報を自動参照する。
+rollover_previous_day=(
+    now.hour < 8
+    and int(d)==yesterday
+    and int(d)==latest_loaded_date
+)
+is_live=(int(d)==today or rollover_previous_day)
+
 official={}; jra_errors=[]
 if is_live:
+    rc1,rc2=st.columns([1,4],vertical_alignment="center")
+    with rc1:
+        if st.button("🔄 JRA再取得",use_container_width=True,key=f"jra_refresh_{race_key}"):
+            fetch_jra_track_conditions.clear()
+            for k in [
+                f"going_init_{race_key}",
+                f"cush_init_{race_key}",
+                f"moist_init_{race_key}",
+                f"weather_init_{race_key}",
+            ]:
+                st.session_state.pop(k,None)
+            st.rerun()
+    with rc2:
+        if rollover_previous_day:
+            st.caption("JRA公式馬場情報を自動取得（早朝の前開催日ロールオーバー）。")
+        else:
+            st.caption("JRA公式馬場情報を自動取得。")
+
     with st.spinner("JRA馬場情報取得中..."):
         cond,jra_errors=fetch_jra_track_conditions()
         official=cond.get(venue,{})
+else:
+    st.caption("過去日レースのためJRA現在値は自動適用しません。")
+
+if official:
+    op=[]
+    if official.get("turf_going"): op.append(f'芝 {official["turf_going"]}')
+    if official.get("cushion") is not None: op.append(f'Cushion {float(official["cushion"]):.1f}')
+    if official.get("dirt_going"): op.append(f'ダ {official["dirt_going"]}')
+    if official.get("dirt_moisture") is not None: op.append(f'ダ含水率 {float(official["dirt_moisture"]):.1f}%')
+    if official.get("weather"): op.append(f'天候 {official["weather"]}')
+    st.success("JRA公式 ｜ "+" / ".join(op))
+elif is_live:
+    st.warning("JRA公式値を取得できませんでした。手動入力で分析できます。")
+    if jra_errors:
+        with st.expander("JRA自動取得エラー",expanded=False):
+            for err in jra_errors[-8:]:
+                st.code(err)
 
 st.markdown("### 馬場情報")
+going_opts=["良","稍重","重","不良"]
+
 if surface=="芝":
-    c1,c2,c3=st.columns(3)
     official_going=official.get("turf_going") if official else None
-    going_opts=["良","稍重","重","不良"]
-    going=c1.selectbox("馬場状態",going_opts,index=going_opts.index(official_going) if official_going in going_opts else 0,key=f"going_{race_key}")
     official_cush=official.get("cushion") if official else None
-    cushion_text=c2.text_input(
-        "クッション値",
-        value=f"{float(official_cush):.1f}" if official_cush is not None else "",
-        placeholder="未取得なら手動入力",
-        key=f"cush_{race_key}",
-    )
+    official_weather=official.get("weather") if official else None
+
+    going_key=f"going_{race_key}"
+    if not st.session_state.get(f"going_init_{race_key}",False):
+        st.session_state[going_key]=official_going if official_going in going_opts else "良"
+        st.session_state[f"going_init_{race_key}"]=True
+
+    cush_key=f"cush_{race_key}"
+    if not st.session_state.get(f"cush_init_{race_key}",False):
+        st.session_state[cush_key]=f"{float(official_cush):.1f}" if official_cush is not None else ""
+        st.session_state[f"cush_init_{race_key}"]=True
+
+    weather_key=f"weather_{race_key}"
+    if not st.session_state.get(f"weather_init_{race_key}",False):
+        st.session_state[weather_key]=str(official_weather or "晴")
+        st.session_state[f"weather_init_{race_key}"]=True
+
+    c1,c2,c3=st.columns(3)
+    going=c1.selectbox("馬場状態",going_opts,key=going_key)
+    cushion_text=c2.text_input("クッション値",key=cush_key,placeholder="未取得なら手動入力")
+    weather=c3.text_input("天候",key=weather_key)
+
     try:
         cushion=float(cushion_text) if str(cushion_text).strip() else None
     except ValueError:
         cushion=None
         c2.warning("クッション値は数値で入力してください。")
-    weather=c3.text_input("天候",value=str(official.get("weather","晴") if official else "晴"),key=f"weather_{race_key}")
     moisture=None
+
 else:
-    c1,c2,c3=st.columns(3)
     official_going=official.get("dirt_going") if official else None
-    going_opts=["良","稍重","重","不良"]
-    going=c1.selectbox("馬場状態",going_opts,index=going_opts.index(official_going) if official_going in going_opts else 0,key=f"going_{race_key}")
-    moisture_text=c2.text_input(
-        "含水率",
-        value="",
-        placeholder="JRA公表値を手動入力（例 5.8）",
-        key=f"moist_{race_key}",
-    )
+    official_moisture=official.get("dirt_moisture") if official else None
+    official_weather=official.get("weather") if official else None
+
+    going_key=f"going_{race_key}"
+    if not st.session_state.get(f"going_init_{race_key}",False):
+        st.session_state[going_key]=official_going if official_going in going_opts else "良"
+        st.session_state[f"going_init_{race_key}"]=True
+
+    moist_key=f"moist_{race_key}"
+    if not st.session_state.get(f"moist_init_{race_key}",False):
+        st.session_state[moist_key]=f"{float(official_moisture):.1f}" if official_moisture is not None else ""
+        st.session_state[f"moist_init_{race_key}"]=True
+
+    weather_key=f"weather_{race_key}"
+    if not st.session_state.get(f"weather_init_{race_key}",False):
+        st.session_state[weather_key]=str(official_weather or "晴")
+        st.session_state[f"weather_init_{race_key}"]=True
+
+    c1,c2,c3=st.columns(3)
+    going=c1.selectbox("馬場状態",going_opts,key=going_key)
+    moisture_text=c2.text_input("含水率",key=moist_key,placeholder="未取得なら手動入力（例 5.8）")
+    weather=c3.text_input("天候",key=weather_key)
+
     try:
         moisture=float(moisture_text) if str(moisture_text).strip() else None
     except ValueError:
         moisture=None
         c2.warning("含水率は数値で入力してください。")
-    weather=c3.text_input("天候",value=str(official.get("weather","晴") if official else "晴"),key=f"weather_{race_key}")
     cushion=None
 
 # M auto-generation / unresolved queue
@@ -346,7 +422,7 @@ pre["M血統"]=pre["M表示"].fillna("－")
 pre["展開"]="－"
 pre["勝率"]="－"
 pre["単勝"]="－"
-precols=[c for c in ["馬番","馬名","騎手","調教師","調教","M血統","展開","勝率","単勝"] if c in pre.columns]
+precols=[c for c in ["馬番","馬名","騎手","調教師","所属","調教","M血統","展開","勝率","単勝"] if c in pre.columns]
 st.dataframe(pre[precols],use_container_width=True,hide_index=True)
 st.caption("M血統：◎=正式採用級のプラス条件（現馬場で強い逆風があれば○へ） / ○=プラス適性 / △=中立・保留 / ×=再現性あるマイナス / －=今回参照条件なし / 未=M未付与")
 
@@ -490,7 +566,7 @@ main["M血統"]=main["M表示"].fillna("－")
 main["展開"]=main["展開評価"].fillna("－")
 main["勝率"]=main["推定勝率"].map(lambda z:f"{z:.1f}%" if pd.notna(z) else "－")
 main["単勝"]=pd.to_numeric(main["単勝オッズ"],errors="coerce").map(lambda z:f"{z:.1f}" if pd.notna(z) else "－")
-main_cols=[c for c in ["馬番","馬名","騎手","調教師","調教","M血統","展開","勝率","単勝"] if c in main.columns]
+main_cols=[c for c in ["馬番","馬名","騎手","調教師","所属","調教","M血統","展開","勝率","単勝"] if c in main.columns]
 st.dataframe(main[main_cols],use_container_width=True,hide_index=True)
 
 # ---------------------------------------------------------

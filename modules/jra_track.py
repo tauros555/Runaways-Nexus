@@ -71,12 +71,36 @@ def _parse_jra_baba_page(page_html, url):
     if m:
         status_time = m.group(1).strip()
 
+    weather = None
+    wm = re.search(r"天候[：:\s]*([^\s]+)", plain)
+    if wm:
+        weather = wm.group(1).strip()
+
+    turf_moisture = None
+    dirt_moisture = None
+    moisture_match = re.search(
+        r"ゴール前と4コーナーの含水率(.*?)(?:含水率表|週間情報)",
+        plain,
+        flags=re.S,
+    )
+    if moisture_match:
+        moisture_text = moisture_match.group(1)
+        tm = re.search(r"芝\s*(\d+(?:\.\d+)?)\s*(\d+(?:\.\d+)?)", moisture_text, flags=re.S)
+        dm = re.search(r"ダート\s*(\d+(?:\.\d+)?)\s*(\d+(?:\.\d+)?)", moisture_text, flags=re.S)
+        if tm:
+            turf_moisture = round((float(tm.group(1)) + float(tm.group(2))) / 2, 2)
+        if dm:
+            dirt_moisture = round((float(dm.group(1)) + float(dm.group(2))) / 2, 2)
+
     return {
         "venue": venue,
-        "cushion": None,  # 実測値は描画後DOMから取得
+        "cushion": None,
         "cushion_time": cushion_time,
         "turf_going": turf_going,
         "dirt_going": dirt_going,
+        "turf_moisture": turf_moisture,
+        "dirt_moisture": dirt_moisture,
+        "weather": weather,
         "status_time": status_time,
         "url": url,
     }

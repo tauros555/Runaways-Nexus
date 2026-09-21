@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import pandas as pd
 import numpy as np
 from modules.m_autogen import combined_runner_master
@@ -34,8 +35,20 @@ def _read(path: Path) -> pd.DataFrame:
             pass
     return pd.DataFrame()
 
+def _canonical_hid(v) -> str:
+    """
+    8桁/10桁の血統登録番号を末尾8桁の比較キーへ統一。
+    例: 23106194 == 2023106194
+    """
+    x=str(v).strip()
+    if x in {"", "nan", "None", "<NA>"}:
+        return ""
+    x=re.sub(r"\.0$","",x)
+    x=re.sub(r"[^0-9]","",x)
+    return x[-8:] if len(x) >= 8 else x
+
 def _hid(s: pd.Series) -> pd.Series:
-    return s.astype(str).str.replace(r"\.0$","",regex=True).str.strip()
+    return s.map(_canonical_hid)
 
 def _uniq(items):
     return list(dict.fromkeys([str(x) for x in items if str(x).strip() not in {"","－","nan","None"}]))
@@ -164,6 +177,7 @@ def _course_state(hits:list[dict]):
 
 def _current_grade(base_state:str, current_hits:list[dict], has_m:bool):
     if not has_m:return "－"
+
     signals=[int(h.get("signal",0)) for h in current_hits]
     strong_pos=any(s>=2 for s in signals)
     strong_neg=any(s<=-2 for s in signals)
@@ -180,6 +194,17 @@ def _current_grade(base_state:str, current_hits:list[dict], has_m:bool):
         return "△" if strong_pos and not strong_neg else "×"
     if base_state=="mild_negative":
         return "○" if strong_pos and not strong_neg else ("×" if strong_neg else "△")
+
+    # 有効なコースルールが「混合」の場合は、
+    # 馬場状態・クッション値/含水率の追加ヒットが無くても
+    # 「参照条件なし(－)」ではなく「中立/競合(△)」とする。
+    if base_state=="mixed":
+        if strong_pos and not strong_neg:
+            return "○"
+        if strong_neg and not strong_pos:
+            return "×"
+        return "△"
+
     if strong_pos and not strong_neg:return "○"
     if strong_neg and not strong_pos:return "×"
     if mild_pos>=2 and mild_neg==0:return "○"

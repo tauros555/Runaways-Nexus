@@ -25,7 +25,15 @@ def _norm(v):
     except Exception:pass
     return re.sub(r'\s+','',unicodedata.normalize('NFKC',str(v)).strip())
 
-def _hid(v): return re.sub(r'\.0$','',_norm(v))
+def _hid(v):
+    """
+    血統登録番号の比較専用キー。
+    TARGET側8桁とMマスタ側10桁の両方を末尾8桁で照合する。
+    元の血統登録番号自体は書き換えない。
+    """
+    x=re.sub(r'\.0$','',_norm(v))
+    x=re.sub(r'[^0-9]','',x)
+    return x[-8:] if len(x) >= 8 else x
 
 def _pick(row,names):
     for c in names:
@@ -97,7 +105,18 @@ def ensure_current_horses(current):
     return pd.DataFrame(status),q,new_df
 
 def combined_runner_master():
-    b=_read(RUNNER_FILE); g=_read(GENERATED_FILE)
+    # 完成済み9枝マスタを正本として優先し、
+    # 当日自動生成分を後から追加する。
+    # JOIN時だけ _hid() を使い、血統登録番号の元表記は保持する。
+    b=_read(RUNNER_FILE)
+    g=_read(GENERATED_FILE)
     if g.empty:return b
     if b.empty:return g
-    return pd.concat([b,g],ignore_index=True,sort=False).drop_duplicates('血統登録番号',keep='last')
+
+    b=b.copy(); g=g.copy()
+    b["_join_hid"]=b["血統登録番号"].map(_hid) if "血統登録番号" in b.columns else ""
+    g["_join_hid"]=g["血統登録番号"].map(_hid) if "血統登録番号" in g.columns else ""
+
+    out=pd.concat([b,g],ignore_index=True,sort=False)
+    out=out.drop_duplicates("_join_hid",keep="last")
+    return out.drop(columns=["_join_hid"],errors="ignore")
