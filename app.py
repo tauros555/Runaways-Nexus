@@ -19,6 +19,7 @@ from modules.jra_track import fetch_jra_track_conditions, cushion_to_nexus_band
 from modules.m_bloodline import load_m_bundle, evaluate_m, attach_m_signature, add_distance_m
 from modules.m_autogen import ensure_current_horses
 from modules.data_refresh import dataset_status, dataset_signature, sync_inbox
+from modules.crown_rules import add_crown_flags
 from rd_modules.route_bias import render_route_grid
 
 BASE=Path(__file__).resolve().parent
@@ -40,6 +41,8 @@ st.markdown("""
 .tag-good{background:#103c32;border-color:#3ab67f}
 .tag-warn{background:#3d2d10;border-color:#d99f34}
 .tag-bad{background:#3c1720;border-color:#d35e70}
+.tag-crown{background:#4a3a08;border-color:#e3bd43;color:#fff4b0;font-weight:900}
+.crown-mark{font-size:20px;font-weight:900;color:#ffd75e;margin-right:6px}
 .small{font-size:12px;opacity:.78}
 [data-testid='stMetric']{background:#08233a;border:1px solid #1f7ea5;border-radius:12px;padding:8px}
 div.stButton>button{border:1px solid #2e95b8;border-radius:10px;background:#0b2941;color:#f5fbff;font-weight:700}
@@ -219,17 +222,24 @@ if not day.empty:
         race_name=str(g["レース名"].iloc[0])
         me=evaluate_m(g,place,distance,surface,bundle=mb)
         gg=g.merge(me,on="馬番",how="left")
+        gg=add_crown_flags(gg)
         horses=[]
         for _,r in gg.iterrows():
+            crown_reasons=[z.strip() for z in str(r.get("crown_reasons","")).split("/") if z.strip()]
             reasons=[]
-            if _positive(r.get("A3高勝率Lap","")): reasons.append("高勝率A3")
-            if bool(r.get("high_roi_trainer",False)): reasons.append("調教師◎")
+            if _positive(r.get("A3高勝率Lap","")):
+                reasons.append("高勝率A3")
             if bool(r.get("M_STRICT_110",False)):
                 raw=str(r.get("M_STRICT_REASON","M×コース◎"))
                 reasons.extend([z.strip() for z in raw.split("/") if z.strip()])
             reasons=list(dict.fromkeys(reasons))
-            if reasons:
-                horses.append({"row":r,"reasons":reasons})
+            if crown_reasons or reasons:
+                horses.append({
+                    "row":r,
+                    "reasons":reasons,
+                    "crown_reasons":crown_reasons,
+                    "crown_mark":str(r.get("crown_mark","") or ""),
+                })
         if horses:
             race_cards[(str(place),int(rno))]={
                 "place":str(place),"rno":int(rno),"race_name":race_name,
@@ -255,10 +265,13 @@ else:
         race_odds=top_odds_cache.get((place,rno),{})
         for item in card["horses"]:
             r=item["row"]; reasons=item["reasons"]
+            crown_reasons=item.get("crown_reasons",[])
+            crown_mark=item.get("crown_mark","")
             hdata=race_odds.get(int(r["馬番"]),{})
             hdata=hdata if isinstance(hdata,dict) else {}
             od=hdata.get("odds")
             odds_text=f"{float(od):.1f}倍" if od is not None else "未取得"
+            crown_tags="".join(f"<span class='tag tag-crown'>👑 {z}</span>" for z in crown_reasons)
             tags="".join(f"<span class='tag tag-good'>{z}</span>" for z in reasons)
             trainer_name=str(r.get("調教師","") or "").strip()
             jockey_name=str(r.get("騎手","") or "").strip()
@@ -278,9 +291,10 @@ else:
 
             horse_html.append(
                 f"<div style='padding:8px 0;border-top:1px solid rgba(127,215,245,.18)'>"
+                f"<span class='crown-mark'>{crown_mark}</span>"
                 f"<span style='font-size:18px;font-weight:900'>{int(r['馬番'])} {r['馬名']}</span> "
                 f"<span class='small'>単勝 {odds_text}</span><br>"
-                f"{people}{tags}</div>"
+                f"{people}{crown_tags}{tags}</div>"
             )
         st.markdown(
             f"<div class='pick pick-hot'><b>{place}{rno}R {card['race_name']}</b> "
@@ -447,6 +461,7 @@ m_eval=evaluate_m(current,venue,distance,surface,going=going,cushion=cushion,moi
 m_eval=m_eval.merge(m_status[["馬番","M付与状態","M自動生成","M補完待ち"]],on="馬番",how="left")
 m_eval["M表示"]=np.where(m_eval["M補完待ち"].fillna(False),"未",m_eval["M評価"].fillna("－"))
 cur=current.merge(m_eval,on="馬番",how="left")
+cur=add_crown_flags(cur)
 
 # ---------------------------------------------------------
 # 4. MAIN STARTING TABLE (pre-analysis)
@@ -458,7 +473,8 @@ pre["M血統"]=pre["M表示"].fillna("－")
 pre["展開"]="－"
 pre["勝率"]="－"
 pre["単勝"]="－"
-precols=[c for c in ["馬番","馬名","騎手","調教師","所属","調教","M血統","展開","勝率","単勝"] if c in pre.columns]
+pre["王冠"]=pre["crown_mark"].fillna("")
+precols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","M血統","展開","勝率","単勝"] if c in pre.columns]
 st.dataframe(pre[precols],use_container_width=True,hide_index=True)
 st.caption("M血統：◎=正式採用級のプラス条件（現馬場で強い逆風があれば○へ） / ○=プラス適性 / △=中立・保留 / ×=再現性あるマイナス / －=今回参照条件なし / 未=M未付与")
 
@@ -675,7 +691,8 @@ main["M血統"]=main["M表示"].fillna("－")
 main["展開"]=main["展開評価"].fillna("－")
 main["勝率"]=main["推定勝率"].map(lambda z:f"{z:.1f}%" if pd.notna(z) else "－")
 main["単勝"]=pd.to_numeric(main["単勝オッズ"],errors="coerce").map(lambda z:f"{z:.1f}" if pd.notna(z) else "－")
-main_cols=[c for c in ["馬番","馬名","騎手","調教師","所属","調教","M血統","展開","勝率","単勝"] if c in main.columns]
+main["王冠"]=main["crown_mark"].fillna("")
+main_cols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","M血統","展開","勝率","単勝"] if c in main.columns]
 st.dataframe(main[main_cols],use_container_width=True,hide_index=True)
 
 # ---------------------------------------------------------
@@ -727,6 +744,8 @@ for col,(_,r) in zip(cols,top3.iterrows()):
     with col:
         st.metric(f"{int(r['馬番'])} {r['馬名']}",f"{float(r['推定勝率']):.1f}%")
         tags=[]
+        if int(r.get("crown_count",0) or 0)>0:
+            tags.append(str(r.get("crown_mark","👑")))
         if training_mark(r)=="◎": tags.append("調教◎")
         if str(r.get("M評価",""))=="◎": tags.append("M◎")
         if str(r.get("展開評価",""))=="◎": tags.append("展開◎")
@@ -737,6 +756,17 @@ for col,(_,r) in zip(cols,top3.iterrows()):
 # 11. DETAILS / COLLAPSIBLE
 # ---------------------------------------------------------
 st.markdown("### 詳細分析")
+with st.expander("👑 クラウンルール該当詳細",expanded=False):
+    crown_view=cur.copy()
+    crown_view=crown_view[pd.to_numeric(crown_view.get("crown_count",0),errors="coerce").fillna(0)>0]
+    if crown_view.empty:
+        st.info("このレースにクラウンルール該当馬はいません。")
+    else:
+        show=crown_view[[c for c in ["馬番","馬名","crown_mark","crown_count","crown_reasons"] if c in crown_view.columns]].rename(columns={
+            "crown_mark":"王冠","crown_count":"該当数","crown_reasons":"王冠理由",
+        })
+        st.dataframe(show,use_container_width=True,hide_index=True)
+
 with st.expander("調教詳細",expanded=False):
     td=current.copy()
     td["通常A3"]=td.apply(lambda r:"○" if training_flags(r)["通常A3"] else "－",axis=1)
