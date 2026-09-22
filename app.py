@@ -56,12 +56,33 @@ def _positive(v):
     s=str(v).strip().lower()
     return s in {"1","true","yes","有","あり","〇","○","◎","★"}
 
+def _file_signature(path: Path) -> str:
+    """
+    canonical CSVの更新を確実に検知するための軽量シグネチャ。
+    mtime_ns + size を使用。ファイルが無い場合も状態をキー化する。
+    """
+    try:
+        stt=path.stat()
+        return f"{path.name}:{stt.st_mtime_ns}:{stt.st_size}"
+    except FileNotFoundError:
+        return f"{path.name}:missing"
+
+def _training_signature() -> str:
+    return "|".join([
+        _file_signature(DATA),
+        _file_signature(A3_HISTORY),
+    ])
+
 @st.cache_data(show_spinner=False)
-def get_training(_signature=None):
+def get_training(signature=None):
+    # signature は Streamlit のキャッシュキーに含める。
+    # 引数名を "_" で始めると Streamlit がハッシュ対象から除外するため、
+    # 更新済みCSVを読まず古いDataFrameが残る。
     return load_training(DATA,A3_HISTORY)
 
 @st.cache_data(show_spinner="M血統マスタ読込中...")
-def get_m(_signature=None):
+def get_m(signature=None):
+    # generated_runner_m.csv 等の更新時も自動でキャッシュを切り替える。
     return load_m_bundle()
 
 @st.cache_data(show_spinner="血統マスタ読込中...")
@@ -69,7 +90,8 @@ def get_pedigree():
     return load_masters()
 
 @st.cache_data(show_spinner="Race Simulator履歴読込中...")
-def get_rd(_signature=None):
+def get_rd(signature=None):
+    # history_seed 等の更新時も自動でキャッシュを切り替える。
     return load_rd_data()
 
 def race_selector(df,key="race_select"):
@@ -140,8 +162,13 @@ def expected_market(odds):
 # Existing external updater can overwrite canonical files directly.
 # If it drops newer files into data/inbox, import them automatically at app startup.
 auto_import_messages=sync_inbox()
+
+# sync_inbox() 後のファイル状態でシグネチャを作る。
+# training_current.csv / a3_history.csv は専用シグネチャで即時更新を検知。
 data_sig=dataset_signature()
-df=get_training(data_sig)
+training_sig=_training_signature()
+
+df=get_training(training_sig)
 mb=get_m(data_sig)
 
 # ---------------------------------------------------------
@@ -160,11 +187,20 @@ with c2:
     st.metric("読込可能",f"{int((ds['状態']=='OK').sum())}/{len(ds)}")
     if st.button("🔄 更新確認・再読込",use_container_width=True,key="data_refresh"):
         msgs=sync_inbox()
-        get_training.clear(); get_m.clear(); get_rd.clear()
+
+        # canonical CSV更新後にメモリ上のDataFrameを強制破棄。
+        get_training.clear()
+        get_m.clear()
+        get_pedigree.clear()
+        get_rd.clear()
+
         if msgs:
-            for msg in msgs: st.caption(msg)
+            for msg in msgs:
+                st.caption(msg)
+
+        # rerun後は新しいファイルシグネチャで必ず再読込される。
         st.rerun()
-st.caption("外部更新処理が canonical ファイルを上書きした場合は、更新時刻・サイズの変化をキャッシュキーにして再読込します。data/inbox への新ファイル投入にも対応します。")
+st.caption("canonical CSVの更新時刻・サイズをキャッシュキーとして監視します。UPDATE_NEXUS後はアプリ再起動不要で、画面rerunまたは「更新確認・再読込」で最新CSVへ切り替わります。data/inbox への新ファイル投入にも対応します。")
 st.divider()
 
 # ---------------------------------------------------------
