@@ -227,6 +227,10 @@ if not day.empty:
         me=evaluate_m(g,place,distance,surface,bundle=mb)
         gg=g.merge(me,on="馬番",how="left")
         gg=attach_day_before_training(gg,db_current,db_master)
+        # TODAY'S NEXUS PICKもレース詳細と同じ最新判定を使う。
+        # 旧training_currentの調教師判定をそのまま使わず、ver2.6正式ルールを先に再判定する。
+        gg=apply_trainer_rules(gg)
+        gg=apply_course_judgement(gg)
         gg=add_crown_flags(gg)
         horses=[]
         for _,r in gg.iterrows():
@@ -234,9 +238,10 @@ if not day.empty:
             reasons=[]
             if _positive(r.get("A3高勝率Lap","")):
                 reasons.append("高勝率A3")
-            if bool(r.get("M_STRICT_110",False)):
-                raw=str(r.get("M_STRICT_REASON","M×コース◎"))
-                reasons.extend([z.strip() for z in raw.split("/") if z.strip()])
+            if _positive(r.get("調教師判定_正式",r.get("調教師判定",""))):
+                reasons.append("調教師判定○")
+            # M×コース旧注目条件は2026-09-25方針で廃止。
+            # M血統は通常分析には残すが、TODAY'S NEXUS PICKの単独抽出理由にはしない。
             reasons=list(dict.fromkeys(reasons))
             if crown_reasons or reasons:
                 horses.append({
@@ -271,12 +276,14 @@ else:
         for item in card["horses"]:
             r=item["row"]; reasons=item["reasons"]
             crown_reasons=item.get("crown_reasons",[])
-            crown_mark=item.get("crown_mark","")
+            crown_mark=item.get("crown_mark","") or ("👑" if crown_reasons else "")
             hdata=race_odds.get(int(r["馬番"]),{})
             hdata=hdata if isinstance(hdata,dict) else {}
             od=hdata.get("odds")
             odds_text=f"{float(od):.1f}倍" if od is not None else "未取得"
-            crown_tags="".join(f"<span class='tag tag-crown'>👑 {z}</span>" for z in crown_reasons)
+            # 追加クラウン理由側に既に👑が含まれる場合も二重表示しない。
+            crown_labels=[str(z).lstrip("👑").strip() for z in crown_reasons]
+            crown_tags="".join(f"<span class='tag tag-crown'>👑 {z}</span>" for z in crown_labels)
             tags="".join(f"<span class='tag tag-good'>{z}</span>" for z in reasons)
             trainer_name=str(r.get("調教師","") or "").strip()
             jockey_name=str(r.get("騎手","") or "").strip()
@@ -285,7 +292,7 @@ else:
 
             training_reason=any(
                 z in reasons
-                for z in ["高勝率A3","通常A3","調教師◎","調教コース◎","B3"]
+                for z in ["高勝率A3","通常A3","調教師判定○","調教師◎","調教コース◎","B3"]
             )
             person_parts=[]
             if training_reason and trainer_name:
@@ -308,7 +315,7 @@ else:
             unsafe_allow_html=True
         )
 
-st.caption("※ TODAY’S NEXUS PICKは閲覧フィルターではありません。注目馬がいないレースも下の全レース選択から必ず開けます。")
+st.caption("※ 注目抽出：高勝率A3 / 最新の調教師判定○ / 正式クラウン。旧M×コース単独条件では抽出しません。TODAY’S NEXUS PICKは閲覧フィルターではなく、注目馬がいないレースも下の全レース選択から開けます。")
 st.divider()
 
 # ---------------------------------------------------------
