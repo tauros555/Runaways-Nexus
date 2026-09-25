@@ -310,6 +310,15 @@ try {
         )
 
         Write-Host ""
+        Write-Host "[2.5/6] 前日坂路追い判定を生成" -ForegroundColor Yellow
+        Run-Python -PyArgs @(
+            "scripts/build_day_before_training_current.py",
+            "--training", (RepoPath $Cfg.training_output),
+            "--hill", $hill.FullName,
+            "--out", (RepoPath $Cfg.day_before_training_current)
+        )
+
+        Write-Host ""
         Write-Host "[3/6] A3履歴を更新" -ForegroundColor Yellow
         Run-Python -PyArgs @("scripts/update_a3_history.py")
     }
@@ -337,6 +346,7 @@ try {
 
         $paths = @(
             $Cfg.training_output,
+            $Cfg.day_before_training_current,
             $Cfg.a3_history,
             $Cfg.history_master
         )

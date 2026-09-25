@@ -1,0 +1,25 @@
+Runaway's Nexus latest consolidated build
+Date: 2026-09-25
+
+Canonical app policy included:
+- Course role display: 単🔥 / 軸 / 紐 / 補 (no green/blue/white role emoji)
+- Course role ver2.9 redesign: 東京芝1800 / 中京ダ1200 / 福島ダ1150 / 阪神芝1400
+- 中京ダ1900 removed from normal course judgement
+- Trainer Crown rules: all current 13 retained
+- Course Crowns: 東京ダ1400 栗東W / 中山芝1200 栗東 / 中山芝1200 美浦 only
+- Training○ x M Crown: 母母父 地-極-極 only
+- Course○ x M Crowns: all removed
+- Top-screen Crown display retained
+- Day-before display: 単🔥 / 軸・単🔥 / 複・紐 / 前日追いあり
+- Old course_judgement_v3.py and crown_rules_addon_v2.py removed
+- UTF-8 BOM applied to Japanese/role CSV masters
+- Windows escaped filenames repaired
+- UPDATE_NEXUS BAT uses safe Git metadata recovery when .git is missing
+- Training workbook is preserved from the uploaded current Nexus; app-side consolidation does not modify its formulas.
+
+Validation:
+- Python compile: PASS
+- ver2.9 synthetic course tests: PASS
+- Crown policy tests: PASS (13 trainer + 3 course + 1 trainer-M = 17 master rows)
+- Removed Course-M Crown test: PASS
+- Role emoji scan: PASS

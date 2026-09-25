@@ -1,0 +1,18 @@
+﻿rule_id,category,course_id,display,role,condition_summary,status,note
+TR_01,TRAINER,,調教師クラウン：杉山晴紀,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TR_02,TRAINER,,調教師クラウン：辻野泰之,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TR_03,TRAINER,,調教師クラウン：鹿戸雄一,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TR_04,TRAINER,,調教師クラウン：友道康夫,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TR_05,TRAINER,,調教師クラウン：森秀行,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TR_06,TRAINER,,調教師クラウン：加藤士津,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TR_07,TRAINER,,調教師クラウン：竹内正洋,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TR_08,TRAINER,,調教師クラウン：寺島良,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TR_09,TRAINER,,調教師クラウン：吉岡辰弥,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TR_10,TRAINER,,調教師クラウン：四位洋文,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TR_11,TRAINER,,調教師クラウン：斎藤誠,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TR_12,TRAINER,,調教師クラウン：佐藤悠太,,現行正式調教師判定○ AND A3,FORMAL,佐藤悠太はA3時のみ
+TR_13,TRAINER,,調教師クラウン：牧浦充徳,,現行正式調教師判定○,FORMAL,現行調教師クラウン維持
+TRM_01,TRAINER_M,,調教師判定○×M：母母父 地-極-極,,調教師判定○ AND 母母父ブロック=地極極,FORMAL,他の調教○×Mクラウンは全解除
+CRS_001,COURSE_TRAINING,中山芝1200,👑 中山芝1200 栗東A1/A3型,軸,栗東 AND 前週土日坂路<60 AND 当週坂路(A1 OR A3),FORMAL,残存コースクラウン
+CRS_002,COURSE_TRAINING,中山芝1200,👑 中山芝1200 美浦ウッド型,軸,美浦 AND 前週土日W5F<70 AND 当週Wあり,FORMAL,残存コースクラウン
+CRS_005,COURSE_TRAINING,東京ダ1400,👑 東京ダ1400 栗東ウッド型,単🔥,栗東 AND 当週W5F<70 AND W4F<54 AND W1F<=12.4,FORMAL,坂路型はクラウン解除

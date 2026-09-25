@@ -32,5 +32,7 @@
     "race*.csv"
   ],
   "git_remote": "origin",
-  "git_branch": "main"
+  "git_branch": "main",
+  "day_before_training_current": "data/day_before_training_current.csv",
+  "day_before_effect_master": "data/day_before_training_effect_master.csv"
 }

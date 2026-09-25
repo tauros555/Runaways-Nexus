@@ -8,6 +8,8 @@ BASE=Path(__file__).resolve().parents[1]
 DATASETS={
     '出馬表・調教データ': BASE/'data'/'training_current.csv',
     'A3履歴': BASE/'data'/'a3_history.csv',
+    '前日追い判定': BASE/'data'/'day_before_training_current.csv',
+    '前日追い効果マスタ': BASE/'data'/'day_before_training_effect_master.csv',
     '過去走データ': BASE/'data'/'rd'/'history_seed_2020_2026.csv.gz',
     'M出走馬マスタ': BASE/'data'/'nexus_m'/'m_runner_9branch.csv',
     'M種牡馬マスタ': BASE/'data'/'nexus_m'/'m_sire_master.csv',

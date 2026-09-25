@@ -19,7 +19,10 @@ from modules.jra_track import fetch_jra_track_conditions, cushion_to_nexus_band
 from modules.m_bloodline import load_m_bundle, evaluate_m, attach_m_signature, add_distance_m
 from modules.m_autogen import ensure_current_horses
 from modules.data_refresh import dataset_status, dataset_signature, sync_inbox
+from modules.day_before_training import load_day_before_bundle, attach_day_before_training
 from modules.crown_rules import add_crown_flags
+from modules.trainer_rules_v26 import apply_trainer_rules
+from modules.course_judgement_v29 import apply_course_judgement
 from rd_modules.route_bias import render_route_grid
 
 BASE=Path(__file__).resolve().parent
@@ -173,6 +176,7 @@ training_sig=_training_signature()
 
 df=get_training(training_sig)
 mb=get_m(data_sig)
+db_current,db_master=load_day_before_bundle()
 
 # ---------------------------------------------------------
 # 0. DATA UPDATE STATUS / AUTO RELOAD
@@ -222,6 +226,7 @@ if not day.empty:
         race_name=str(g["レース名"].iloc[0])
         me=evaluate_m(g,place,distance,surface,bundle=mb)
         gg=g.merge(me,on="馬番",how="left")
+        gg=attach_day_before_training(gg,db_current,db_master)
         gg=add_crown_flags(gg)
         horses=[]
         for _,r in gg.iterrows():
@@ -461,6 +466,9 @@ m_eval=evaluate_m(current,venue,distance,surface,going=going,cushion=cushion,moi
 m_eval=m_eval.merge(m_status[["馬番","M付与状態","M自動生成","M補完待ち"]],on="馬番",how="left")
 m_eval["M表示"]=np.where(m_eval["M補完待ち"].fillna(False),"未",m_eval["M評価"].fillna("－"))
 cur=current.merge(m_eval,on="馬番",how="left")
+cur=attach_day_before_training(cur,db_current,db_master)
+cur=apply_trainer_rules(cur)
+cur=apply_course_judgement(cur)
 cur=add_crown_flags(cur)
 
 # ---------------------------------------------------------
@@ -469,12 +477,15 @@ cur=add_crown_flags(cur)
 st.markdown("### 出馬表")
 pre=cur.copy()
 pre["調教"]=pre.apply(training_mark,axis=1)
+pre["前日追い"]=pre["前日追い表示"].fillna("")
 pre["M血統"]=pre["M表示"].fillna("－")
 pre["展開"]="－"
 pre["勝率"]="－"
 pre["単勝"]="－"
 pre["王冠"]=pre["crown_mark"].fillna("")
-precols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","M血統","展開","勝率","単勝"] if c in pre.columns]
+pre["厩舎"]=pre["厩舎タイプ"].fillna("")
+pre["コース"]=pre["コース調教役割"].fillna("")
+precols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","厩舎","コース","前日追い","M血統","展開","勝率","単勝"] if c in pre.columns]
 st.dataframe(pre[precols],use_container_width=True,hide_index=True)
 st.caption("M血統：◎=正式採用級のプラス条件（現馬場で強い逆風があれば○へ） / ○=プラス適性 / △=中立・保留 / ×=再現性あるマイナス / －=今回参照条件なし / 未=M未付与")
 
@@ -687,12 +698,15 @@ st.dataframe(val[probcols].sort_values("推定勝率",ascending=False),use_conta
 st.markdown("### 新・出馬表")
 main=val.copy()
 main["調教"]=main.apply(training_mark,axis=1)
+main["前日追い"]=main["前日追い表示"].fillna("")
 main["M血統"]=main["M表示"].fillna("－")
 main["展開"]=main["展開評価"].fillna("－")
 main["勝率"]=main["推定勝率"].map(lambda z:f"{z:.1f}%" if pd.notna(z) else "－")
 main["単勝"]=pd.to_numeric(main["単勝オッズ"],errors="coerce").map(lambda z:f"{z:.1f}" if pd.notna(z) else "－")
 main["王冠"]=main["crown_mark"].fillna("")
-main_cols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","M血統","展開","勝率","単勝"] if c in main.columns]
+main["厩舎"]=main["厩舎タイプ"].fillna("")
+main["コース"]=main["コース調教役割"].fillna("")
+main_cols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","厩舎","コース","前日追い","M血統","展開","勝率","単勝"] if c in main.columns]
 st.dataframe(main[main_cols],use_container_width=True,hide_index=True)
 
 # ---------------------------------------------------------
@@ -766,6 +780,28 @@ with st.expander("👑 クラウンルール該当詳細",expanded=False):
             "crown_mark":"王冠","crown_count":"該当数","crown_reasons":"王冠理由",
         })
         st.dataframe(show,use_container_width=True,hide_index=True)
+
+with st.expander("前日追い判定詳細",expanded=False):
+    dd=cur.copy()
+    dd=dd[dd["前日坂路あり"].fillna(False)]
+    if dd.empty:
+        st.info("このレースに前日坂路追い該当馬はいません。")
+    else:
+        show_cols=[c for c in ["馬番","馬名","調教師","芝・ダ","前日追い表示","前日追いタイプ","前日追い正式採用","前日追い備考"] if c in dd.columns]
+        st.dataframe(dd[show_cols],use_container_width=True,hide_index=True)
+    st.caption("時計は内部保持のみ。前日追い判定は本体スコアへ固定加点しません。")
+
+with st.expander("厩舎判定詳細",expanded=False):
+    td=cur.copy()
+    show_cols=[c for c in ["馬番","馬名","調教師","調教師判定_正式","厩舎タイプ","厩舎信頼度","厩舎理由","厩舎統計"] if c in td.columns]
+    st.dataframe(td[show_cols],use_container_width=True,hide_index=True)
+    st.caption("厩舎タイプは馬券用途の説明情報です。FINAL NEXUS/Coreへ固定加点せず、調教師判定との二重加点もしません。")
+
+with st.expander("コース判定詳細",expanded=False):
+    cd=cur.copy()
+    show_cols=[c for c in ["馬番","馬名","コース判定","コース調教役割","コース判定理由","crown_reasons"] if c in cd.columns]
+    st.dataframe(cd[show_cols],use_container_width=True,hide_index=True)
+    st.caption("ver2.9表示：単🔥=頭型 / 軸=軸型 / 紐=相手型 / 補=監視。複合表記（単🔥・軸、紐・補）あり。コース役割は固定加点せず、単勝妙味はオッズ確認後に別判定します。")
 
 with st.expander("調教詳細",expanded=False):
     td=current.copy()
