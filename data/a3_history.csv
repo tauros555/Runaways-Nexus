@@ -1206,11 +1206,11 @@
 20260926,中山,9,7,モーモーゼロ,24102066,False,False,False,False
 20260926,中山,9,8,スタースポット,24106264,False,False,False,False
 20260926,中山,10,1,デンプシー,23106190,False,False,False,False
-20260926,中山,10,2,イゾラフェリーチェ,21105516,False,False,False,False
+20260926,中山,10,2,イゾラフェリーチェ,21105516,False,False,True,False
 20260926,中山,10,3,ウィングブルー,23105317,False,False,False,False
 20260926,中山,10,4,ジョヴィアン,20110127,False,False,False,False
 20260926,中山,10,5,ヴィヴァクラウン,21101595,False,False,False,False
-20260926,中山,10,6,トラスコンガーデン,23100935,False,False,False,False
+20260926,中山,10,6,トラスコンガーデン,23100935,False,False,True,False
 20260926,中山,10,7,ドリーミングアップ,21103303,False,False,False,False
 20260926,中山,10,8,レオアジャイル,23104909,False,False,False,False
 20260926,中山,10,9,ビッグフラワー,21100958,False,False,False,False
@@ -1226,7 +1226,7 @@
 20260926,中山,11,3,ソルトブリーズ,21101639,False,False,False,False
 20260926,中山,11,4,フォルラニーニ,21105859,False,False,False,False
 20260926,中山,11,5,グラニット,20100810,False,False,False,False
-20260926,中山,11,6,アルトゥーム,21105746,False,False,False,False
+20260926,中山,11,6,アルトゥーム,21105746,False,False,True,False
 20260926,中山,11,7,エスコバル,18106154,False,False,False,False
 20260926,中山,11,8,インパクトシー,22101230,False,False,False,False
 20260926,中山,11,9,ナヴォーナ,20103456,False,False,False,False
@@ -1355,7 +1355,7 @@
 20260926,阪神,8,10,ボンボンベイビー,23105371,False,False,False,False
 20260926,阪神,8,11,マサハヤヴォス,21105047,False,False,False,False
 20260926,阪神,9,1,ナイトパイロット,24105587,False,False,False,False
-20260926,阪神,9,2,リーチツモドライチ,24108321,False,False,False,False
+20260926,阪神,9,2,リーチツモドライチ,24108321,False,False,True,False
 20260926,阪神,9,3,エランヴィータ,24104312,False,False,False,False
 20260926,阪神,9,4,ベルヴェール,24106458,False,False,False,False
 20260926,阪神,9,5,ヌーンベルク,24103505,False,False,False,False
@@ -1405,6 +1405,6 @@
 20260926,阪神,12,11,キャッチアシーフ,23103810,False,False,False,False
 20260926,阪神,12,12,アスゴッド,22103704,False,False,False,False
 20260926,阪神,12,13,ランドスター,23100398,False,False,False,False
-20260926,阪神,12,14,ヒットミー,22104394,False,False,False,False
+20260926,阪神,12,14,ヒットミー,22104394,False,False,True,False
 20260926,阪神,12,15,ストロングボンド,23105661,False,False,False,False
 20260926,阪神,12,16,ダズリングダンス,20105957,False,False,False,False
