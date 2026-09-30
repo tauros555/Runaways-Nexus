@@ -5,7 +5,8 @@ import pandas as pd
 POS={"1","true","yes","有","あり","〇","○","◎","★"}
 ALIASES={"大久保龍":"大久保龍志","加藤士津八":"加藤士津","加藤志津":"加藤士津","斉藤誠":"斎藤誠","中内田充正":"中内田充"}
 REMOVED={"大竹正博","稲垣幸雄"}
-OVERRIDE={"上村洋行","友道康夫","竹内正洋","寺島良","中内田充","高野友和","奥村豊","中竹和也","新谷功一","大久保龍志","橋口慎介"}|REMOVED
+NEW_SURFACE_TRAINERS={"田中博康","蛯名正義","菊沢隆徳"}
+OVERRIDE={"上村洋行","友道康夫","竹内正洋","寺島良","中内田充","高野友和","奥村豊","中竹和也","新谷功一","大久保龍志","橋口慎介"}|NEW_SURFACE_TRAINERS|REMOVED
 
 TYPE_MASTER={
 "上村洋行":("軸・単🔥","MID","前週坂路＋当週W＋前日坂路","N=98 / 勝23.5% / 複56.1% / 単回130.8%"),
@@ -19,6 +20,9 @@ TYPE_MASTER={
 "新谷功一":("軸・単🔥","MID","当週坂路TIME1<52＋同日A2/B2/A3/B3","N=53 / 勝26.4% / 複41.5% / 単回151.1%"),
 "大久保龍志":("軸","LOW","当週坂路A3またはB3","N=48 / 勝22.9% / 複47.9%"),
 "橋口慎介":("補","HIGH","当週坂路TIME1<54＋同日A2/B2","N=500 / 勝11.4% / 複31.2%"),
+"田中博康":("軸","HIGH","ダート＋前週土日坂路<56","ダ n=83 / 勝33.7% / 複55.4% / 単回105.9% / 勝・複とも5/5年優位"),
+"蛯名正義":("単🔥","MID","芝＋前週土日坂路<56","芝 n=57 / 勝21.1% / 複35.1% / 単回147.0% / 比較可能4/4年優位"),
+"菊沢隆徳":("単🔥","MID","芝＋当週水木坂路の加速ラップ","芝 n=167 / 勝13.8% / 複29.9% / 単回132.0% / 勝率5/5年優位"),
 "牧浦充徳":("単🔥","MID","正式調教師判定該当","単勝妙味型"),
 "加藤士津":("単🔥・軸","HIGH","正式調教師判定該当","単勝＋軸型"),
 "佐藤悠太":("補","MID","正式調教師判定該当","A3単独はクラウン条件"),
@@ -63,6 +67,8 @@ def wood(r,d):
  if d=='wed': return (num(r,'ウ 水 1F','ウ 水1F'),num(r,'ウ 水 4F'),num(r,'ウ 水 5F'))
  return (num(r,'ウ 木 1F','ウ 木1F'),num(r,'ウ 木 4F'),num(r,'ウ 木 5F'))
 def prior_hill(r): return exists(r,'坂1w前 土 TIME1') or exists(r,'坂1w前 日 TIME1')
+def prior_hill_lt(r,x):
+ return any((v is not None and v<x) for v in (num(r,'坂1w前 土 TIME1'),num(r,'坂1w前 日 TIME1')))
 def prior_lap1_lt(r,x):
  a=num(r,'坂1w前 土 LAP1'); b=num(r,'坂1w前 日 LAP1'); return (a is not None and a<x) or (b is not None and b<x)
 def current_wood(r): return any(v is not None for d in ('wed','thu') for v in wood(r,d))
@@ -77,8 +83,13 @@ def cls(l1,l2): return a2(l1,l2) or b2(l1,l2) or a3(l1,l2) or b3(l1,l2)
 def formal_trainer_rule(r):
  t=norm(r.get('調教師',''))
  if t in REMOVED: return False
+ if t in NEW_SURFACE_TRAINERS and '厩舎追加条件' in r.index and pd.notna(r.get('厩舎追加条件')):
+  return pos(r.get('厩舎追加条件'))
  if t not in OVERRIDE: return pos(r.get('調教師判定',''))
  wd=[day(r,'wed'),day(r,'thu')]; ww=[wood(r,'wed'),wood(r,'thu')]
+ if t=='田中博康': return surface(r)=='ダ' and prior_hill_lt(r,56)
+ if t=='蛯名正義': return surface(r)=='芝' and prior_hill_lt(r,56)
+ if t=='菊沢隆徳': return surface(r)=='芝' and any(l1 is not None and l2 is not None and l2>l1 for _,l1,l2 in wd)
  if t=='上村洋行': return surface(r)=='芝' and prior_hill(r) and current_wood(r) and day_before(r)
  if t=='友道康夫': return surface(r)=='芝' and aff(r) in ('栗','栗東','2') and any(l1 is not None and l2 is not None and l1<13 and l2>=13 for _,l1,l2 in wd)
  if t=='竹内正洋':

@@ -309,6 +309,19 @@ try {
             "--out", (RepoPath $Cfg.training_output)
         )
 
+        # training_current.csv を正本として、別枠の研究用7点指数を生成。
+        # 不足する前週ウッド4Fとレースクラスだけ原票CSVから補完する。
+        $finishArgs = @(
+            "scripts/build_finishup_research_current.py",
+            "--training", (RepoPath $Cfg.training_output),
+            "--hill", $hill.FullName,
+            "--wood", $wood.FullName,
+            "--model", (RepoPath "models/finishup_weekend_research.json"),
+            "--out", (RepoPath "data/finishup_research_current.csv")
+        )
+        if ($null -ne $race) { $finishArgs += @("--race", $race.FullName) }
+        Run-Python -PyArgs $finishArgs
+
         Write-Host ""
         Write-Host "[2.5/6] 前日坂路追い判定を生成" -ForegroundColor Yellow
         Run-Python -PyArgs @(
@@ -346,6 +359,7 @@ try {
 
         $paths = @(
             $Cfg.training_output,
+            "data/finishup_research_current.csv",
             $Cfg.day_before_training_current,
             $Cfg.a3_history,
             $Cfg.history_master

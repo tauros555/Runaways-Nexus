@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from modules.training_radar import load_training
+from modules.finishup_research import attach as attach_finishup_research
 from modules.pedigree_core import load_masters, evaluate_pedigree_core
 from modules.partner_compatibility import anchor_candidates, rank_partners
 from modules.nexus_partner_v4 import build_partner_recommendations
@@ -175,6 +176,7 @@ data_sig=dataset_signature()
 training_sig=_training_signature()
 
 df=get_training(training_sig)
+df=attach_finishup_research(df,BASE/'data'/'finishup_research_current.csv')
 mb=get_m(data_sig)
 db_current,db_master=load_day_before_bundle()
 
@@ -705,6 +707,8 @@ st.dataframe(val[probcols].sort_values("推定勝率",ascending=False),use_conta
 st.markdown("### 新・出馬表")
 main=val.copy()
 main["調教"]=main.apply(training_mark,axis=1)
+main["仕上げ指数"]=main.apply(lambda r:f"{int(r['仕上げ点'])}/7" if pd.notna(r.get('仕上げ点')) else str(r.get('仕上げ状態','未生成')),axis=1)
+main["B1警告"]=main['B1警告'].map(lambda b:'⚠️B1' if b else '')
 main["前日追い"]=main["前日追い表示"].fillna("")
 main["M血統"]=main["M表示"].fillna("－")
 main["展開"]=main["展開評価"].fillna("－")
@@ -713,7 +717,7 @@ main["単勝"]=pd.to_numeric(main["単勝オッズ"],errors="coerce").map(lambda
 main["王冠"]=main["crown_mark"].fillna("")
 main["厩舎"]=main["厩舎タイプ"].fillna("")
 main["コース"]=main["コース調教役割"].fillna("")
-main_cols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","厩舎","コース","前日追い","M血統","展開","勝率","単勝"] if c in main.columns]
+main_cols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","仕上げ指数","B1警告","厩舎","コース","前日追い","M血統","展開","勝率","単勝"] if c in main.columns]
 st.dataframe(main[main_cols],use_container_width=True,hide_index=True)
 
 # ---------------------------------------------------------
@@ -777,6 +781,16 @@ for col,(_,r) in zip(cols,top3.iterrows()):
 # 11. DETAILS / COLLAPSIBLE
 # ---------------------------------------------------------
 st.markdown("### 詳細分析")
+with st.expander("🐎 厩舎仕上げ指数（研究表示）",expanded=False):
+    view=cur.copy()
+    view['仕上げ指数']=view.apply(lambda r:f"{int(r['仕上げ点'])}/7" if pd.notna(r.get('仕上げ点')) else str(r.get('仕上げ状態','未生成')),axis=1)
+    view['B1警告']=view['B1警告'].map(lambda b:'⚠️B1' if b else '')
+    view['調教データ']=view['CSV補完'].map(lambda b:'h/w原票補完' if b else '判定CSV')
+    cols=[c for c in ['馬番','馬名','調教師','仕上げ指数','B1警告','前週土日調教','調教データ'] if c in view.columns]
+    st.dataframe(view[cols],use_container_width=True,hide_index=True)
+    if view['CSV調教師判定要確認'].any():
+        st.warning('調教師判定CSVに計算エラーの馬がいます。該当馬の調教師判定○と最低5点の適用を確認してください。')
+    st.caption('判定CSVの時計が欠ける場合は同じ馬・厩舎・日付のh/w原票で補います。既存の調教判定・FINAL NEXUS・クラウンには加点しません。B1は警告を表示し点数を制限しません。函館・札幌と障害は対象外です。')
 with st.expander("👑 クラウンルール該当詳細",expanded=False):
     crown_view=cur.copy()
     crown_view=crown_view[pd.to_numeric(crown_view.get("crown_count",0),errors="coerce").fillna(0)>0]

@@ -17,8 +17,11 @@ def _scenario_components(df: pd.DataFrame, scenario: str):
         adj4=0.015*close
         adjf=0.060*close
     elif scenario=="LONG_SPURT":
-        if "HorseMoveTo3_5" in z.columns:
-            move=np.clip(0.5+pd.to_numeric(z["HorseMoveTo3_5"],errors="coerce").fillna(0).to_numpy(float),0,1)
+        move_col="HorseMoveTo3Past5" if "HorseMoveTo3Past5" in z.columns else (
+            "HorseMoveTo3_5" if "HorseMoveTo3_5" in z.columns else None
+        )
+        if move_col is not None:
+            move=np.clip(0.5+pd.to_numeric(z[move_col],errors="coerce").fillna(0).to_numpy(float),0,1)
         else:
             move=np.full(len(z),0.5)
         adj4=0.045*(move-0.5)
