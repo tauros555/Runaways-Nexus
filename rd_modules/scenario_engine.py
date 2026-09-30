@@ -96,7 +96,13 @@ def scenario_adjustment(df:pd.DataFrame,scenario:str):
         z["Scenario4Adj"]=0.015*close
         z["ScenarioFinishAdj"]=0.060*close
     elif s=="LONG_SPURT":
-        move=(0.5+z.get("HorseMoveTo3_5",0)).clip(0,1)
+        move_col="HorseMoveTo3Past5" if "HorseMoveTo3Past5" in z.columns else (
+            "HorseMoveTo3_5" if "HorseMoveTo3_5" in z.columns else None
+        )
+        if move_col is None:
+            move=pd.Series(0.5,index=z.index,dtype=float)
+        else:
+            move=(0.5+pd.to_numeric(z[move_col],errors="coerce").fillna(0.0)).clip(0,1)
         z["Scenario4Adj"]=0.045*(move-0.5)
         z["ScenarioFinishAdj"]=0.055*(move-0.5)
     else:
