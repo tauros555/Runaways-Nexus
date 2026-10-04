@@ -240,6 +240,8 @@ if not day.empty:
             reasons=[]
             if _positive(r.get("A3高勝率Lap","")):
                 reasons.append("高勝率A3")
+            if _positive(r.get("nagori_a3", False)):
+                reasons.append("🟣 なごりA3")
             if _positive(r.get("調教師判定_正式",r.get("調教師判定",""))):
                 reasons.append("調教師判定○")
             # M×コース旧注目条件は2026-09-25方針で廃止。
@@ -294,7 +296,7 @@ else:
 
             training_reason=any(
                 z in reasons
-                for z in ["高勝率A3","通常A3","調教師判定○","調教師◎","調教コース◎","B3"]
+                for z in ["高勝率A3","🟣 なごりA3","通常A3","調教師判定○","調教師◎","調教コース◎","B3"]
             )
             person_parts=[]
             if training_reason and trainer_name:
@@ -317,7 +319,7 @@ else:
             unsafe_allow_html=True
         )
 
-st.caption("※ 注目抽出：高勝率A3 / 最新の調教師判定○ / 正式クラウン。旧M×コース単独条件では抽出しません。TODAY’S NEXUS PICKは閲覧フィルターではなく、注目馬がいないレースも下の全レース選択から開けます。")
+st.caption("※ 注目抽出：高勝率A3 / 🟣 なごりA3 / 最新の調教師判定○ / 正式クラウン。旧M×コース単独条件では抽出しません。TODAY’S NEXUS PICKは閲覧フィルターではなく、注目馬がいないレースも下の全レース選択から開けます。")
 st.divider()
 
 # ---------------------------------------------------------
