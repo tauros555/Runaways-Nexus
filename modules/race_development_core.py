@@ -76,9 +76,29 @@ def _apply_manual_queue(pred: pd.DataFrame, manual_leaders=None, manual_position
     z["Pred4Rank"]=z["FourPred_Jockey"].rank(method="first",ascending=False).astype(int)
     return z,lci
 
+def prepare_current_inputs(current):
+    """実頭数と枠番を隊列モデルへ渡す。入力の原本は変更しない。"""
+    x=current.copy()
+    if len(x)<2:
+        raise ValueError("シミュレーションには2頭以上の出走表が必要です。")
+    if "頭数" not in x.columns:
+        x["頭数"]=len(x)
+    else:
+        heads=pd.to_numeric(x["頭数"],errors="coerce").fillna(len(x))
+        if not (heads.between(2,28)&heads.eq(heads.round())).all():
+            raise ValueError("頭数は2〜28の整数で指定してください。")
+        x["頭数"]=heads.astype(int)
+    frames=pd.to_numeric(x.get("枠番",pd.Series(index=x.index,dtype=float)),errors="coerce")
+    if "枠" in x.columns:
+        frames=frames.fillna(pd.to_numeric(x["枠"],errors="coerce"))
+    if not (frames.between(1,8)&frames.eq(frames.round())).all():
+        raise ValueError("枠番（または枠）には1〜8の整数が必要です。")
+    x["枠番"]=frames.astype(int)
+    return x
+
 def run_race_development(current, history, course, thresholds, n_sims=10000, route_bias="フラット",
                          manual_scenario=None, manual_leaders=None, manual_positions=None):
-    x=current.copy()
+    x=prepare_current_inputs(current)
     surface=str(x["芝・ダ"].iloc[0]); place=str(x["場所"].iloc[0])
     distance=float(pd.to_numeric(x["距離"],errors="coerce").iloc[0])
     date=int(pd.to_numeric(x["年月日"],errors="coerce").iloc[0]); year=int(str(date)[:4])

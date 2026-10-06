@@ -2,13 +2,21 @@ import pandas as pd, numpy as np
 from rd_modules.distance_change import distance_change_bucket
 def enrich(h):
     h=h.copy(); n=pd.to_numeric(h["頭数"],errors="coerce")
+    ranks=[]
     for src,dst in [("通過順位1角","P1"),("通過順位2角","P2"),("通過順位3角","P3"),("通過順位4角","P4")]:
-        r=pd.to_numeric(h[src],errors="coerce"); h[dst]=1-(r-1)/(n-1); h.loc[(n<=1)|r.isna(),dst]=np.nan
-    h["FinishRate"]=1-(pd.to_numeric(h["確定着順"],errors="coerce")-1)/(n-1)
+        r=pd.to_numeric(h[src],errors="coerce")
+        # 0は未使用コーナー・欠測。実順位として扱わない。
+        r=r.where((n>1)&r.between(1,n)&r.eq(r.round()))
+        ranks.append(r)
+        h[dst]=1-(r-1)/(n-1)
+    finish=pd.to_numeric(h["確定着順"],errors="coerce")
+    finish=finish.where((n>1)&finish.between(1,n)&finish.eq(finish.round()))
+    h["FinishRate"]=1-(finish-1)/(n-1)
     h["FirstRate"]=h[["P1","P2","P3","P4"]].bfill(axis=1).iloc[:,0]
     h["MoveTo3"]=h["P3"]-h["FirstRate"]; h["Move34"]=h["P4"]-h["P3"]
-    first_rank=h[["通過順位1角","通過順位2角","通過順位3角","通過順位4角"]].bfill(axis=1).iloc[:,0]
-    h["LeadObserved"]=(pd.to_numeric(first_rank,errors="coerce")==1).astype(float)
+    first_rank=pd.concat(ranks,axis=1).bfill(axis=1).iloc[:,0]
+    # 全コーナー不明なら「先頭ではなかった」とせず、集計から除外する。
+    h["LeadObserved"]=first_rank.eq(1).astype(float).where(first_rank.notna())
     return h
 def mean(s,d):
     v=pd.to_numeric(s,errors="coerce").dropna(); return float(v.mean()) if len(v) else d
