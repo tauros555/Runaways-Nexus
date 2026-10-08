@@ -12,12 +12,18 @@ def _num(v, default=np.nan):
 def build_partner_recommendations(final: pd.DataFrame, partners: pd.DataFrame, anchor_no: int,
                                   odds_data: dict|None=None, max_total: int=5) -> pd.DataFrame:
     """Nexus partner v4.
-    Main line = popular horses excluding effective Jirai.
-    Hole line = Simulator/Partner top horses, upgraded by course-training and M-course evidence.
+    Main line = hill 1F leaders, then the race-wide simulator win-probability leader.
+    Hole line = Partner top horses, upgraded by course-training and M-course evidence.
     """
     odds_data=odds_data or {}
-    x=final.copy()
-    x["馬番_num"]=pd.to_numeric(x["馬番"],errors="coerce")
+    full=final.copy()
+    full["馬番_num"]=pd.to_numeric(full["馬番"],errors="coerce")
+    win_prob=pd.to_numeric(full.get("MC勝率",pd.Series(np.nan,index=full.index)),errors="coerce")
+    win_leader=(full.assign(_win_prob=win_prob)
+                .dropna(subset=["_win_prob","馬番_num"])
+                .sort_values(["_win_prob","馬番_num"],ascending=[False,True]))
+    win_no=int(win_leader.iloc[0]["馬番_num"]) if not win_leader.empty else None
+    x=full.copy()
     x=x[~x["馬番_num"].eq(float(anchor_no))].copy()
     x["地雷_effective"]=pd.to_numeric(x.get("jirai",x.get("jirai_badge",0)),errors="coerce").fillna(0).astype(int)
     x["人気_live"]=x["馬番_num"].map(lambda n: odds_data.get(int(n),{}).get("popularity") if pd.notna(n) else None)
@@ -33,10 +39,23 @@ def build_partner_recommendations(final: pd.DataFrame, partners: pd.DataFrame, a
     x["展開×調教穴"]=x["展開穴"] & x["調教コース"] & x["地雷_effective"].eq(0)
     x["展開×M穴"]=x["展開穴"] & x["M適合"]
 
-    main=x[(x["地雷_effective"]==0)&x["人気_live"].notna()].sort_values(["人気_live","単勝_live"]).head(3)
     chosen=[]
-    for _,r in main.iterrows():
-        chosen.append((r,"本線相手","人気上位・地雷なし"))
+    hill=x[x.get("坂路1F",pd.Series("",index=x.index)).fillna("").astype(str).str.startswith("🥇")]
+    for _,r in hill.sort_values("馬番_num").iterrows():
+        no=int(r["馬番_num"])
+        before=bool(r.get("前日坂路あり",False))
+        reason="坂路1F最速"+("・前日坂路あり（追加買い条件外）" if before else "・前日坂路なし")
+        chosen.append((r,"坂路1F1位",reason))
+
+    if win_no is not None and win_no!=anchor_no:
+        top=x[x["馬番_num"].eq(win_no)]
+        if not top.empty:
+            existing=next((i for i,(row,_,_) in enumerate(chosen) if int(row["馬番_num"])==win_no),None)
+            if existing is not None:
+                row,cat,old_reason=chosen[existing]
+                chosen[existing]=(row,cat+"＋勝率1位",old_reason+" / シミュレーター勝率1位")
+            else:
+                chosen.append((top.iloc[0],"勝率1位","シミュレーター勝率1位"))
 
     holes=x[x["展開穴"]].copy()
     holes["hole_priority"]=3*holes["展開×調教穴"].astype(int)+2*holes["展開×M穴"].astype(int)+holes["展開穴"].astype(int)
@@ -46,6 +65,8 @@ def build_partner_recommendations(final: pd.DataFrame, partners: pd.DataFrame, a
 
     used={int(r["馬番_num"]) for r,_,_ in chosen if pd.notna(r["馬番_num"])}
     for _,r in holes.iterrows():
+        if len(chosen)>=max_total:
+            break
         no=int(r["馬番_num"]) if pd.notna(r["馬番_num"]) else -1
         if no in used: 
             continue
@@ -60,7 +81,9 @@ def build_partner_recommendations(final: pd.DataFrame, partners: pd.DataFrame, a
             break
 
     rows=[]
-    for r,cat,reason in chosen[:max_total]:
+    for r,cat,reason in chosen:
+        if bool(r.get("地雷_effective",0)):
+            reason+=" / ⚠️地雷"
         rows.append({
             "馬番":int(r["馬番_num"]) if pd.notna(r["馬番_num"]) else r.get("馬番"),
             "馬名":r.get("馬名",""),

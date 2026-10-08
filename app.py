@@ -145,6 +145,22 @@ def training_mark(r):
     if f["B3"] or f["調教コース"]: return "○"
     return "－"
 
+def hill_1f_top_marks(race_df):
+    """当週水・木の坂路1Fから、レース内最速馬（同タイム含む）を表示する。"""
+    laps=[]
+    for col in (" 坂 水 LAP1", " 坂 木 LAP1"):
+        if col in race_df.columns:
+            sec=pd.to_numeric(race_df[col],errors="coerce")
+            laps.append(sec.where(sec.between(8,25)))
+    marks=pd.Series("",index=race_df.index,dtype=object)
+    if not laps:
+        return marks
+    fastest=pd.concat(laps,axis=1).min(axis=1)
+    if fastest.notna().any():
+        leaders=fastest.eq(fastest.min())
+        marks.loc[leaders]=fastest.loc[leaders].map(lambda sec:f"🥇 {sec:.1f}")
+    return marks
+
 def detail_training(r):
     f=training_flags(r); tags=[]
     if f["調教師判定"]: tags.append("調教師◎")
@@ -714,6 +730,8 @@ main["仕上げ点"]=main["馬番"].map(finishup_current["仕上げ点"])
 main["仕上げ状態"]=main["馬番"].map(finishup_current["仕上げ状態"]).fillna("未生成")
 main["仕上げ指数"]=main.apply(lambda r:f"{int(r['仕上げ点'])}/7" if pd.notna(r.get('仕上げ点')) else str(r.get('仕上げ状態','未生成')),axis=1)
 main["B1警告"]=main["馬番"].map(finishup_current["B1警告"]).fillna(False).astype(bool).map(lambda b:'⚠️B1' if b else '')
+hill_1f_marks=hill_1f_top_marks(cur)
+main["坂路1F"]=main["馬番"].map(pd.Series(hill_1f_marks.to_numpy(),index=cur["馬番"])).fillna("")
 main["前日追い"]=main["前日追い表示"].fillna("")
 main["M血統"]=main["M表示"].fillna("－")
 main["展開"]=main["展開評価"].fillna("－")
@@ -722,8 +740,9 @@ main["単勝"]=pd.to_numeric(main["単勝オッズ"],errors="coerce").map(lambda
 main["王冠"]=main["crown_mark"].fillna("")
 main["厩舎"]=main["厩舎タイプ"].fillna("")
 main["コース"]=main["コース調教役割"].fillna("")
-main_cols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","仕上げ指数","B1警告","厩舎","コース","前日追い","M血統","展開","勝率","単勝"] if c in main.columns]
+main_cols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","坂路1F","仕上げ指数","B1警告","厩舎","コース","前日追い","M血統","展開","勝率","単勝"] if c in main.columns]
 st.dataframe(main[main_cols],use_container_width=True,hide_index=True)
+st.caption("坂路1F🥇＝当週水・木の坂路終い1Fがこのレースで最速。同タイムは全頭表示。")
 
 # ---------------------------------------------------------
 # 8. RECOMMENDED PARTNERS
@@ -738,7 +757,11 @@ for _,r in anchors.iterrows():
 anchor_label=st.selectbox("本命・注目馬",anchor_labels,key=f"anchor_{race_key}")
 anchor_no=amap[anchor_label]
 partners=rank_partners(val,anchor_no,exclude_jirai=True)
-recs=build_partner_recommendations(val,partners,anchor_no,odds_data,max_total=5)
+recs=build_partner_recommendations(main,partners,anchor_no,odds_data,max_total=5)
+st.caption("相手の優先表示：坂路1F最速（同タイム全頭） → レース全体のシミュレーター勝率1位。人気は参考情報。")
+mc_win_order=main.assign(_mc_win=pd.to_numeric(main["MC勝率"],errors="coerce")).dropna(subset=["_mc_win"]).sort_values(["_mc_win","馬番"],ascending=[False,True])
+if not mc_win_order.empty and int(mc_win_order.iloc[0]["馬番"])==anchor_no:
+    st.caption("勝率1位は選択中の軸馬自身です。勝率1位相手の馬連は購入対象外です。")
 if recs.empty:
     st.info("相手候補がありません。")
 else:
