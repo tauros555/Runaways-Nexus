@@ -484,8 +484,10 @@ else:
 
 # M auto-generation / unresolved queue
 m_status,m_queue,m_generated=ensure_current_horses(current)
-get_m.clear()
-mb=get_m(dataset_signature()+"|generated")
+# 自動生成マスタのファイル更新をキャッシュキーに反映する。
+# 毎回 get_m.clear() すると画面操作ごとに全M血統マスタを読み直すため廃止。
+_m_generated_sig=_file_signature(BASE/"data"/"nexus_m"/"generated_runner_m.csv")
+mb=get_m(dataset_signature()+"|generated|"+_m_generated_sig)
 if not m_generated.empty:
     base_runner=mb.get("runner",pd.DataFrame())
     mb["runner"]=pd.concat([base_runner,m_generated],ignore_index=True,sort=False).drop_duplicates("血統登録番号",keep="last")
