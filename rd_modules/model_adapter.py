@@ -35,7 +35,9 @@ def _queue_frame(x):
 def predict_queue(x):
     b=load_queue(); z,X=_queue_frame(x)
     z["LeadProb_Jockey"]=np.clip(b["models"]["lead"].predict_proba(X)[:,1],0,1)
-    z["FirstPred_Jockey"]=np.clip(b["models"]["first"].predict(X),0,1)
+    first_raw=b["models"]["first"].predict(X)
+    z["FirstPredRankScore"]=first_raw
+    z["FirstPred_Jockey"]=np.clip(first_raw,0,1)
     z["ThreePred"]=np.clip(b["models"]["three"].predict(X),0,1)
     z["FourPred_Jockey"]=np.clip(b["models"]["four"].predict(X),0,1)
     zn=z.copy()

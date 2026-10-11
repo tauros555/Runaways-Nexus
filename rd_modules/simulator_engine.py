@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from rd_modules.model_adapter import predict_queue,predict_fullwin
 from rd_modules.distance_change import apply_queue_corrections,apply_win_correction
 
@@ -18,7 +19,8 @@ def predict(x):
     z["LeadPressure"]=z["LeadProb_Jockey"]*lci
     z=predict_fullwin(z)
     z=apply_win_correction(z)
-    z["PredFirstRank"]=z["FirstPred_Jockey"].rank(method="first",ascending=False).astype(int)
+    first_rank_score=pd.to_numeric(z.get("FirstPredRankScore",z["FirstPred_Jockey"]),errors="coerce").fillna(z["FirstPred_Jockey"])
+    z["PredFirstRank"]=first_rank_score.rank(method="first",ascending=False).astype(int)
     z["Pred3Rank"]=z["ThreePred"].rank(method="first",ascending=False).astype(int)
     z["Pred4Rank"]=z["FourPred_Jockey"].rank(method="first",ascending=False).astype(int)
     def style(r):

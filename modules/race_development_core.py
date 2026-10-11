@@ -77,7 +77,7 @@ def _apply_manual_queue(pred: pd.DataFrame, manual_leaders=None, manual_position
     return z,lci
 
 def prepare_current_inputs(current):
-    """実頭数と枠番を隊列モデルへ渡す。入力の原本は変更しない。"""
+    """実頭数と利用できる枠番を隊列モデルへ渡す。入力の原本は変更しない。"""
     x=current.copy()
     if len(x)<2:
         raise ValueError("シミュレーションには2頭以上の出走表が必要です。")
@@ -91,9 +91,8 @@ def prepare_current_inputs(current):
     frames=pd.to_numeric(x.get("枠番",pd.Series(index=x.index,dtype=float)),errors="coerce")
     if "枠" in x.columns:
         frames=frames.fillna(pd.to_numeric(x["枠"],errors="coerce"))
-    if not (frames.between(1,8)&frames.eq(frames.round())).all():
-        raise ValueError("枠番（または枠）には1〜8の整数が必要です。")
-    x["枠番"]=frames.astype(int)
+    valid=frames.between(1,8)&frames.eq(frames.round())
+    x["枠番"]=frames.where(valid)
     return x
 
 def run_race_development(current, history, course, thresholds, n_sims=10000, route_bias="フラット",
