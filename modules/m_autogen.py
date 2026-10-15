@@ -76,12 +76,16 @@ def _build(row,f,mg,sd,sf,sm,ss):
     d.update(dict(zip(BRANCH_COLS,vals))); return d
 
 def ensure_current_horses(current):
-    sire,idx=_sire_index(); fallback=_lineage_lookup(); existing=_existing_ids(); generated=_read(GENERATED_FILE)
+    existing=_existing_ids(); generated=_read(GENERATED_FILE)
+    sire=idx=fallback=None
     generated_ids=set(_hid(v) for v in generated.get('血統登録番号',[])) if not generated.empty else set(); status=[]; new=[]; queue=[]
     for _,r in current.iterrows():
         h=_hid(r.get('血統登録番号')); name=_pick(r,['馬名'])
         if h and h in existing:
             src='自動生成済' if h in generated_ids else '既存M'; status.append({'血統登録番号':h,'馬番':r.get('馬番'),'馬名':name,'M付与状態':src,'M自動生成':False,'M補完待ち':False}); continue
+        if sire is None:
+            sire,idx=_sire_index()
+            fallback=_lineage_lookup()
         f,mg,sd=_lineage(r,fallback); miss=[]
         sf=sire.loc[idx[f]] if f in idx else None; sm=sire.loc[idx[mg]] if mg in idx else None; ss=sire.loc[idx[sd]] if sd in idx else None
         if not f: miss.append('父名')

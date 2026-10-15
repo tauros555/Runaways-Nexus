@@ -20,7 +20,17 @@ def predict(x):
     z=predict_fullwin(z)
     z=apply_win_correction(z)
     first_rank_score=pd.to_numeric(z.get("FirstPredRankScore",z["FirstPred_Jockey"]),errors="coerce").fillna(z["FirstPred_Jockey"])
-    z["PredFirstRank"]=first_rank_score.rank(method="first",ascending=False).astype(int)
+    # The first-turn model can give several horses the same leaf score.  Do not
+    # let the input (horse-number) order silently become the predicted order.
+    tie_breakers=[]
+    z["_first_rank_score"]=first_rank_score
+    for col in ("LeadProb_Jockey","HorseFirstPast5","JockeyFirst50","FourPred_Jockey"):
+        if col in z.columns:
+            z[f"_first_tie_{col}"]=pd.to_numeric(z[col],errors="coerce").fillna(-1)
+            tie_breakers.append(f"_first_tie_{col}")
+    ordered=z.sort_values(["_first_rank_score",*tie_breakers],ascending=False,kind="stable")
+    z["PredFirstRank"]=pd.Series(np.arange(1,len(z)+1),index=ordered.index).reindex(z.index).astype(int)
+    z=z.drop(columns=["_first_rank_score",*tie_breakers])
     z["Pred3Rank"]=z["ThreePred"].rank(method="first",ascending=False).astype(int)
     z["Pred4Rank"]=z["FourPred_Jockey"].rank(method="first",ascending=False).astype(int)
     def style(r):

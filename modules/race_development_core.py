@@ -71,7 +71,8 @@ def _apply_manual_queue(pred: pd.DataFrame, manual_leaders=None, manual_position
     z["ClosingRelief"]=(1-z["FourPred_Jockey"])*z["ClosingOpportunity"]*lci
     z["FrontCloseTension"]=z["FourPred_Jockey"]*z["ClosingOpportunity"]*lci
     z["LeadPressure"]=z["LeadProb_Jockey"]*lci
-    z["PredFirstRank"]=z["FirstPred_Jockey"].rank(method="first",ascending=False).astype(int)
+    if manual_positions:
+        z["PredFirstRank"]=z["FirstPred_Jockey"].rank(method="first",ascending=False).astype(int)
     if "ThreePred" in z.columns: z["Pred3Rank"]=z["ThreePred"].rank(method="first",ascending=False).astype(int)
     z["Pred4Rank"]=z["FourPred_Jockey"].rank(method="first",ascending=False).astype(int)
     return z,lci

@@ -17,7 +17,7 @@ from modules.day_bias import estimate_same_day_bias, add_bias_fit
 from modules.odds import fetch_win_odds
 from modules.value import add_value_metrics
 from modules.jra_track import fetch_jra_track_conditions, cushion_to_nexus_band
-from modules.m_bloodline import load_m_bundle, evaluate_m, attach_m_signature, add_distance_m
+from modules.m_bloodline import FILES as M_BLOODLINE_FILES, load_m_bundle, evaluate_m, attach_m_signature, add_distance_m
 from modules.m_autogen import ensure_current_horses
 from modules.data_refresh import dataset_status, dataset_signature, sync_inbox
 from modules.day_before_training import load_day_before_bundle, attach_day_before_training
@@ -101,6 +101,12 @@ def get_rd(signature=None):
     # history_seed 等の更新時も自動でキャッシュを切り替える。
     return load_rd_data()
 
+@st.cache_data(ttl=60,show_spinner=False,max_entries=100)
+def get_pick_win_odds(date,place,race_no,horse_signature):
+    # 注目レース欄だけ短時間キャッシュする。馬番・馬名の変更もキーへ反映。
+    horses=[{"horse_no":no,"horse_name":name} for no,name in horse_signature]
+    return fetch_win_odds(date,place,race_no,horses,force_update=False)
+
 def race_selector(df,key="race_select"):
     x=df[["年月日","場所","R","レース名","芝・ダ","距離"]].copy()
     x["年月日"]=pd.to_numeric(x["年月日"],errors="coerce")
@@ -179,6 +185,47 @@ def expected_market(odds):
     inv=1/o
     return inv/inv.sum() if inv.notna().any() else pd.Series(np.nan,index=o.index)
 
+@st.cache_data(show_spinner=False,max_entries=8)
+def get_today_pick_cards(pick_date,source_signature,_day,_bundle,_db_current,_db_master):
+    # The inputs prefixed with "_" are large data objects. Their file signatures
+    # are included in source_signature so only updated data rebuilds the cards.
+    race_cards={}
+    if _day.empty:
+        return race_cards
+    for (place,rno),g in _day.groupby(["場所","R"],sort=True):
+        surface=str(g["芝・ダ"].iloc[0]); distance=int(pd.to_numeric(g["距離"],errors="coerce").iloc[0])
+        race_name=str(g["レース名"].iloc[0])
+        me=evaluate_m(g,place,distance,surface,bundle=_bundle)
+        gg=g.merge(me,on="馬番",how="left")
+        gg=attach_day_before_training(gg,_db_current,_db_master)
+        gg=apply_trainer_rules(gg)
+        gg=apply_course_judgement(gg)
+        gg=add_crown_flags(gg)
+        horses=[]
+        for _,r in gg.iterrows():
+            crown_reasons=[z.strip() for z in str(r.get("crown_reasons","")).split("/") if z.strip()]
+            reasons=[]
+            if _positive(r.get("A3高勝率Lap","")):
+                reasons.append("高勝率A3")
+            if _positive(r.get("nagori_a3",False)):
+                reasons.append("🟣 なごりA3")
+            if _positive(r.get("調教師判定_正式",r.get("調教師判定",""))):
+                reasons.append("調教師判定○")
+            reasons=list(dict.fromkeys(reasons))
+            if crown_reasons or reasons:
+                horses.append({
+                    "row":r,
+                    "reasons":reasons,
+                    "crown_reasons":crown_reasons,
+                    "crown_mark":str(r.get("crown_mark","") or ""),
+                })
+        if horses:
+            race_cards[(str(place),int(rno))]={
+                "place":str(place),"rno":int(rno),"race_name":race_name,
+                "surface":surface,"distance":distance,"horses":horses
+            }
+    return race_cards
+
 # ---------------------------------------------------------
 # DATA
 # ---------------------------------------------------------
@@ -236,45 +283,14 @@ dates=sorted(pd.to_numeric(df["年月日"],errors="coerce").dropna().astype(int)
 pick_date=st.selectbox("注目開催日",dates,index=0,key="pick_date") if dates else None
 day=df[pd.to_numeric(df["年月日"],errors="coerce").eq(pick_date)].copy() if pick_date else df.iloc[:0].copy()
 
-# 1レース=1カード。該当馬が複数いても同じカード内へまとめる。
-race_cards={}
-if not day.empty:
-    for (place,rno),g in day.groupby(["場所","R"],sort=True):
-        surface=str(g["芝・ダ"].iloc[0]); distance=int(pd.to_numeric(g["距離"],errors="coerce").iloc[0])
-        race_name=str(g["レース名"].iloc[0])
-        me=evaluate_m(g,place,distance,surface,bundle=mb)
-        gg=g.merge(me,on="馬番",how="left")
-        gg=attach_day_before_training(gg,db_current,db_master)
-        # TODAY'S NEXUS PICKもレース詳細と同じ最新判定を使う。
-        # 旧training_currentの調教師判定をそのまま使わず、ver2.6正式ルールを先に再判定する。
-        gg=apply_trainer_rules(gg)
-        gg=apply_course_judgement(gg)
-        gg=add_crown_flags(gg)
-        horses=[]
-        for _,r in gg.iterrows():
-            crown_reasons=[z.strip() for z in str(r.get("crown_reasons","")).split("/") if z.strip()]
-            reasons=[]
-            if _positive(r.get("A3高勝率Lap","")):
-                reasons.append("高勝率A3")
-            if _positive(r.get("nagori_a3", False)):
-                reasons.append("🟣 なごりA3")
-            if _positive(r.get("調教師判定_正式",r.get("調教師判定",""))):
-                reasons.append("調教師判定○")
-            # M×コース旧注目条件は2026-09-25方針で廃止。
-            # M血統は通常分析には残すが、TODAY'S NEXUS PICKの単独抽出理由にはしない。
-            reasons=list(dict.fromkeys(reasons))
-            if crown_reasons or reasons:
-                horses.append({
-                    "row":r,
-                    "reasons":reasons,
-                    "crown_reasons":crown_reasons,
-                    "crown_mark":str(r.get("crown_mark","") or ""),
-                })
-        if horses:
-            race_cards[(str(place),int(rno))]={
-                "place":str(place),"rno":int(rno),"race_name":race_name,
-                "surface":surface,"distance":distance,"horses":horses
-            }
+# 1レース=1カード。判定とオッズは別々にキャッシュする。
+pick_sources=[DATA,A3_HISTORY,BASE/"data"/"finishup_research_current.csv",
+              BASE/"data"/"day_before_training_current.csv",
+              BASE/"data"/"day_before_training_effect_master.csv"]
+pick_sources += list(M_BLOODLINE_FILES.values())
+pick_sources.append(BASE/"data"/"nexus_m"/"generated_runner_m.csv")
+pick_signature="|".join(_file_signature(p) for p in pick_sources)
+race_cards=get_today_pick_cards(pick_date,pick_signature,day,mb,db_current,db_master)
 
 if not race_cards:
     st.info("この開催日に正式採用済みの注目条件該当馬はありません。")
@@ -282,10 +298,10 @@ else:
     top_odds_cache={}
     for (place,rno),card in race_cards.items():
         rg=day[(day["場所"].astype(str)==place)&(pd.to_numeric(day["R"],errors="coerce")==rno)]
-        horses=[{"horse_no":int(z["馬番"]),"horse_name":str(z["馬名"])}
-                for _,z in rg.iterrows() if pd.notna(z.get("馬番"))]
+        horse_signature=tuple((int(z["馬番"]),str(z["馬名"]))
+                              for _,z in rg.iterrows() if pd.notna(z.get("馬番")))
         try:
-            od,_=fetch_win_odds(pick_date,place,rno,horses,force_update=False)
+            od,_=get_pick_win_odds(pick_date,place,rno,horse_signature)
         except Exception:
             od={}
         top_odds_cache[(place,rno)]=od if isinstance(od,dict) else {}
@@ -694,6 +710,8 @@ if refresh or not cached_odds:
         d,venue,race_no,horses,
         force_update=refresh
     )
+    if refresh:
+        get_pick_win_odds.clear()
     st.session_state[odds_key]=data if isinstance(data,dict) else {}
     st.session_state[f"odds_err_{race_key}"]=errs
     cached_odds=st.session_state[odds_key]
