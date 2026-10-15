@@ -179,8 +179,15 @@ def features(t:pd.DataFrame,wood:pd.DataFrame,races:pd.DataFrame)->pd.DataFrame:
         x=x.merge(q,on=['_horse','_trainer','_day'],how='left',validate='many_to_one').drop(columns='_day')
     known={'sat':'ウ1w前 土 5F','sun':'ウ1w前 日 5F','wed':'ウ 水 5F','thu':'ウ 木 5F'}
     for key,header in known.items():
+        # Excel の「0」は5F時計なし（4Fのみ）の印。生の5Fが無いことと矛盾しない。
         original=col(x,header)
+        original=original.where(original.between(55,100))
         x['_wood_complete']&=original.isna()|(original-x[key+'_5F']).abs().le(.11)
+        if key in ('wed','thu'):
+            original4=col(x,'ウ 水 4F' if key=='wed' else 'ウ 木 4F')
+            original4=original4.where(original4.between(40,90))
+            only4=original.isna()&original4.notna()
+            x['_wood_complete']&=~only4|(original4-x[key+'_4F']).abs().le(.11)
     wh=[x[k+'_5F'] for k in ['wed','thu']]
     x['wood5']=pd.concat(wh,axis=1).min(axis=1)
     w4=[x[k+'_4F'].where(x[k+'_5F'].isna()) for k in ['wed','thu']]
