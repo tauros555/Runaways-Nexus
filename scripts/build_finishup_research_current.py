@@ -1,6 +1,7 @@
 """Generate the separate 0–7 trainer finishing research display at update time."""
 from __future__ import annotations
 import argparse
+import io
 import sys
 from pathlib import Path
 import pandas as pd
@@ -17,6 +18,33 @@ def read_any(path,**kw):
         except UnicodeDecodeError:pass
     raise ValueError(f'CSVを読めません: {path}')
 
+def read_hill(path,**kw):
+    try:
+        return read_any(path,**kw)
+    except ValueError as exc:
+        if not str(exc).startswith('CSVを読めません: '):
+            raise
+    # TARGET may cut a long half-width horse name after a lone CP932 lead
+    # byte. Repair only that known field in memory; never rewrite h.csv.
+    original=Path(path).read_bytes()
+    rows=original.splitlines(keepends=True)
+    repaired=[]
+    count=0
+    for row in rows:
+        if row.startswith(b'2024106565,'):
+            fields=row.split(b',',6)
+            if len(fields)==7 and fields[5].endswith(b'\x82'):
+                fields[5]=fields[5][:-1]
+                row=b','.join(fields)
+                count+=1
+        repaired.append(row)
+    if count==0 or original.decode('cp932',errors='replace').count('\ufffd')!=count:
+        raise ValueError(f'CSVを読めません: {path}（既知の馬名末尾以外に破損があります）')
+    fixed=b''.join(repaired)
+    fixed.decode('cp932')
+    print(f'h.csv: 馬名末尾の不完全な文字 {count} 件を読み込み時に補正')
+    return pd.read_csv(io.BytesIO(fixed),encoding='cp932',low_memory=False,**kw)
+
 def main():
     a=argparse.ArgumentParser()
     for name in ['training','hill','wood','model','out']:a.add_argument('--'+name,required=True,type=Path)
@@ -26,7 +54,7 @@ def main():
     # Match the app's official judgment on the exported CSV.  Reconstructed
     # clocks may feed the research model, but must not silently change ○.
     training['_formal_trainer_ok']=apply_trainer_rules(training)['調教師判定_正式'].astype(bool)
-    hill=read_any(opt.hill,dtype=str)
+    hill=read_hill(opt.hill,dtype=str)
     wood=read_any(opt.wood,dtype=str)
     hill_required={'血統登録番号','調教師','年月日','Time1','Lap1','Lap2','Lap3','Lap4'}
     if not hill_required.issubset(hill):raise ValueError('h.csvに不足列: '+str(sorted(hill_required-set(hill))))
@@ -56,3 +84,4 @@ def main():
     print('未算出内訳',out.loc[out.status.ne('算出'),'status'].value_counts().to_dict())
 
 if __name__=='__main__':main()
+
