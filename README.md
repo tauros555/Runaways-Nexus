@@ -54,3 +54,4 @@ Candidate weights from 2026 chronological backtest: development 0.10, pedigree 0
 - `🏆 高回収厩舎`: displayed only when trainer rule is positive and the trainer is one of 加藤士津八 / 斎藤誠 / 吉岡辰弥 / 森秀行.
   - This badge does not add another training star because trainer rule is already a primary training signal.
   - 吉岡辰弥 + trainer rule positive keeps the existing Jirai override.
+
