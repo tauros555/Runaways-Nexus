@@ -60,7 +60,7 @@ def evaluate_crown(row):
             reasons.append(f"調教師判定○：{trainer}")
 
     if _hill_1f_crown(row):
-        reasons.append(f"当週水木坂路1F 11.0～12.0：{trainer}")
+        reasons.append(f"当週A3：{trainer}")
 
     # Only retained Training○×M crown.
     if trainer_ok:
