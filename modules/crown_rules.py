@@ -7,6 +7,7 @@ from modules.crown_rules_addon_v29 import apply_new_crown_rules
 # - Keep only one Training○×M crown: 母母父 地-極-極.
 # - Remove every Course○×M crown.
 # - Course-training crowns are handled in crown_rules_addon_v29.py and limited to 3 rules.
+NEW_HILL_TRAINERS={"斉藤崇史","藤原英昭","佐藤悠太"}
 CROWN_TRAINERS={"杉山晴紀","辻野泰之","鹿戸雄一","友道康夫","森秀行","加藤士津","竹内正洋","寺島良","吉岡辰弥","四位洋文","斎藤誠","佐藤悠太","牧浦充徳"}
 TRAINER_ALIASES={"加藤士津八":"加藤士津","加藤志津":"加藤士津","斉藤誠":"斎藤誠","大久保龍":"大久保龍志"}
 TRAINER_M_PATTERNS={("母母父","地極極")}
@@ -33,6 +34,20 @@ def _m_values(row):
             "母父":str(row.get("M母父","") or "").strip(),
             "母母父":str(row.get("M母母父","") or "").strip()}
 
+def _hill_1f_crown(row):
+    trainer=normalize_trainer(row.get("調教師",""))
+    if trainer not in NEW_HILL_TRAINERS:
+        return False
+    if trainer=="斉藤崇史" and str(row.get("芝・ダ","")).strip() not in {"芝","2"}:
+        return False
+    for column in (" 坂 水 LAP1"," 坂 木 LAP1","坂 水 LAP1","坂 木 LAP1","AL","AQ"):
+        lap=pd.to_numeric(row.get(column),errors="coerce")
+        if isinstance(lap,pd.Series):
+            lap=lap.iloc[0]
+        if pd.notna(lap) and 11.0<=lap<=12.0:
+            return True
+    return False
+
 def evaluate_crown(row):
     reasons=[]
     trainer_ok=_positive(row.get("調教師判定",""))
@@ -41,8 +56,11 @@ def evaluate_crown(row):
 
     # Existing trainer crowns are retained. 佐藤悠太 is crown only on A3 hit.
     if trainer_ok and trainer in CROWN_TRAINERS:
-        if trainer != "佐藤悠太" or _positive(row.get("A3LAP判定","")):
+        if trainer != "佐藤悠太" or (_positive(row.get("A3LAP判定","")) and not _hill_1f_crown(row)):
             reasons.append(f"調教師判定○：{trainer}")
+
+    if _hill_1f_crown(row):
+        reasons.append(f"当週水木坂路1F 11.0～12.0：{trainer}")
 
     # Only retained Training○×M crown.
     if trainer_ok:

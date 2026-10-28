@@ -729,6 +729,7 @@ val["単勝オッズ"]=val["馬番"].map(lambda n:_odds_item(n).get("odds"))
 val["人気"]=val["馬番"].map(lambda n:_odds_item(n).get("popularity"))
 val=add_value_metrics(val,odds_col="単勝オッズ",prob_col="final_nexus_prob")
 val["推定勝率"]=(pd.to_numeric(val["final_nexus_prob"],errors="coerce")*100).round(1)
+val["シミュ勝率"]=(pd.to_numeric(val.get("MC勝率",pd.Series(np.nan,index=val.index)),errors="coerce")*100).round(1)
 val["市場期待"]= (expected_market(val["単勝オッズ"])*100).round(1)
 val["差pt"]=(val["推定勝率"]-val["市場期待"]).round(1)
 if "MC複勝率" in val.columns:
@@ -736,7 +737,7 @@ if "MC複勝率" in val.columns:
 else:
     val["複勝圏確率"]=np.nan
 
-probcols=[c for c in ["馬番","馬名","推定勝率","複勝圏確率","市場期待","差pt","単勝オッズ","VALUE"] if c in val.columns]
+probcols=[c for c in ["馬番","馬名","推定勝率","シミュ勝率","複勝圏確率","市場期待","差pt","単勝オッズ","VALUE"] if c in val.columns]
 st.dataframe(val[probcols].sort_values("推定勝率",ascending=False),use_container_width=True,hide_index=True)
 
 # ---------------------------------------------------------
@@ -756,11 +757,12 @@ main["前日追い"]=main["前日追い表示"].fillna("")
 main["M血統"]=main["M表示"].fillna("－")
 main["展開"]=main["展開評価"].fillna("－")
 main["勝率"]=main["推定勝率"].map(lambda z:f"{z:.1f}%" if pd.notna(z) else "－")
+main["シミュ勝率"]=main["シミュ勝率"].map(lambda z:f"{z:.1f}%" if pd.notna(z) else "－")
 main["単勝"]=pd.to_numeric(main["単勝オッズ"],errors="coerce").map(lambda z:f"{z:.1f}" if pd.notna(z) else "－")
 main["王冠"]=main["crown_mark"].fillna("")
 main["厩舎"]=main["厩舎タイプ"].fillna("")
 main["コース"]=main["コース調教役割"].fillna("")
-main_cols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","坂路1F","仕上げ指数","B1警告","厩舎","コース","前日追い","M血統","展開","勝率","単勝"] if c in main.columns]
+main_cols=[c for c in ["馬番","馬名","王冠","騎手","調教師","所属","調教","坂路1F","仕上げ指数","B1警告","厩舎","コース","前日追い","M血統","展開","勝率","シミュ勝率","単勝"] if c in main.columns]
 st.dataframe(main[main_cols],use_container_width=True,hide_index=True)
 st.caption("坂路1F🥇＝当週水・木の坂路終い1Fがこのレースで最速。同タイムは全頭表示。")
 
